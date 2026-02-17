@@ -1,0 +1,42 @@
+# Adsorption on Cu(111)
+Molecule
+    rotationmodus = angle
+    rotationangle = 120.0
+    fixpointtype = atoms
+    fixpointatoms = 1
+    structure = ./06-Diffusions/msa.xyz
+End
+
+# Lattice of the Cu(111) surface
+Lattice
+    transx = 30
+    transy = 18
+    
+    vectors
+        2.51883   0.00000   0.00000
+        0.00000   4.36274   0.00000
+        0.00000   0.00000   1.00000
+    end
+End
+
+# Hollow grid points of the Cu(111) surface
+Grid
+    points
+        0.00000   1.45518   0.00000
+        0.00000   2.90908   0.00000
+        1.25942   0.72771   0.00000
+        1.25942   3.63655   0.00000  
+    end
+End
+
+# General settings for adsorption of aniline  
+Events
+    steps = 1500
+    coverageconvergence = 100
+    forceadsorption = 25
+
+    eventlist
+	    1 ads 1 1.0
+        1 dif 1 1 10.0 2.6
+    end
+End
