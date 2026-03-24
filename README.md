@@ -1,4 +1,4 @@
-# RSA.jl
+# RandomSequentialAdsorption.jl
 
 A *Random Sequential Adsorption (RSA)* package for the modelling of molecular adsorption events within area-selective deposition. 
 
