@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Tutorial 3: Working with Multiple Adsorbates · RSA.jl</title><meta name="title" content="Tutorial 3: Working with Multiple Adsorbates · RSA.jl"/><meta property="og:title" content="Tutorial 3: Working with Multiple Adsorbates · RSA.jl"/><meta property="twitter:title" content="Tutorial 3: Working with Multiple Adsorbates · RSA.jl"/><meta name="description" content="Documentation for RSA.jl."/><meta property="og:description" content="Documentation for RSA.jl."/><meta property="twitter:description" content="Documentation for RSA.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="RSA.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">RSA.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../rsa/">About RSA</a></li><li><a class="tocitem" href="../../install/">Installation</a></li><li><span class="tocitem">Input Keywords</span><ul><li><a class="tocitem" href="../../keywords/">Keyword Types</a></li><li><a class="tocitem" href="../../molecules/">Molecules</a></li><li><a class="tocitem" href="../../lattice/">Lattice</a></li><li><a class="tocitem" href="../../grids/">Grids</a></li><li><a class="tocitem" href="../../events/">Events</a></li></ul></li><li><a class="tocitem" href="../../run/">Running Simulations</a></li><li><a class="tocitem" href="../tutorials/">Tutorials</a><ul><li class="is-active"><a class="tocitem" href>Tutorial 3: Working with Multiple Adsorbates</a><ul class="internal"><li><a class="tocitem" href="#Input-File-Setup"><span>Input File Setup</span></a></li><li><a class="tocitem" href="#Running-the-Simulation"><span>Running the Simulation</span></a></li><li><a class="tocitem" href="#Evaluation"><span>Evaluation</span></a></li></ul></li></ul></li><li><span class="tocitem">Systems</span><ul><li><a class="tocitem" href="../../systems/molecules/">Molecule Library</a></li><li><a class="tocitem" href="../../systems/surfaces/">Surface Library</a></li></ul></li><li><a class="tocitem" href="../../developers/">Developers</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a href="../tutorials/">Tutorials</a></li><li class="is-active"><a href>Tutorial 3: Working with Multiple Adsorbates</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Tutorial 3: Working with Multiple Adsorbates</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/Tonner-Zech-Group/RSA" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/Tonner-Zech-Group/RSA/blob/main/docs/src/tutorials/03-multiple-adsorbates.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Tutorial-3:-Working-with-Multiple-Adsorbates"><a class="docs-heading-anchor" href="#Tutorial-3:-Working-with-Multiple-Adsorbates">Tutorial 3: Working with Multiple Adsorbates</a><a id="Tutorial-3:-Working-with-Multiple-Adsorbates-1"></a><a class="docs-heading-anchor-permalink" href="#Tutorial-3:-Working-with-Multiple-Adsorbates" title="Permalink"></a></h1><div class="admonition is-info" id="Learning-Goals-4e44899cd50940b7"><header class="admonition-header">Learning Goals<a class="admonition-anchor" href="#Learning-Goals-4e44899cd50940b7" title="Permalink"></a></header><div class="admonition-body"><ul><li>Set up simulations with two or more adsorbates</li><li>Basic evalution of those simulations</li></ul></div></div><div class="admonition is-success" id="Tip-9dfcc8c19983bbbd"><header class="admonition-header">Tip<a class="admonition-anchor" href="#Tip-9dfcc8c19983bbbd" title="Permalink"></a></header><div class="admonition-body"><p>Keep in mind that you can speed up simulations by using multiple threads as described in the <a href="../../run/#Using-Multithreading-with-VSCode">Using Multithreading with VSCode</a> section.</p></div></div><h2 id="Input-File-Setup"><a class="docs-heading-anchor" href="#Input-File-Setup">Input File Setup</a><a id="Input-File-Setup-1"></a><a class="docs-heading-anchor-permalink" href="#Input-File-Setup" title="Permalink"></a></h2><p>Some simulations work with several adsorbates <em>simultanously</em>. In this case, every adsorbate must be provided by its own xyz file. In this tutorial we will use pyridine in its upright and tilted conformation as an example. Use the following coordinates to create two xyz files:   </p><pre><code class="nohighlight hljs">11
+xyz file for pyridine (upright)
+N   6.28358   6.56065    8.45355
+C   6.25263   7.72424    9.13811
+C   6.23112   7.77781   10.52736
+C   6.24195   6.58463   11.25023
+C   6.27507   5.37951   10.54820
+C   6.29524   5.40861    9.15778
+H   6.22511   6.59391   12.34275
+H   6.24512   8.63611    8.52875
+H   6.20608   8.74862   11.02618
+H   6.28509   4.41787   11.06492
+H   6.32100   4.48683    8.56448</code></pre><pre><code class="nohighlight hljs">11
+xyz file for pyridine (tilted)
+N   6.29357   6.02642    8.42824
+C   7.43949   5.53364    8.95227
+C   7.45754   4.55838    9.94549
+C   6.24499   4.07395   10.43689
+C   5.05858   4.62236    9.94926
+C   5.12504   5.59566    8.95637
+H   6.22516   3.28470   11.19206
+H   8.36942   5.93498    8.53437
+H   8.41447   4.17565   10.30539
+H   4.08392   4.29174   10.31264
+H   4.21642   6.04634    8.54133</code></pre><p>As we want to work with multiple adsorbates, a molecule block is required in the main input file for every adsorbate.</p><pre><code class="nohighlight hljs"># Adsorption on Cu(111)
+Molecule
+    rotationmodus = angle
+    rotationangle = 60.0
+    fixpointtype = atoms
+    fixpointatoms = 1
+    structure = ...ADJUST-YOUR-PATH.../pyridine-upright.xyz
+End
+
+Molecule
+    rotationmodus = angle
+    rotationangle = 60.0
+    fixpointtype = atoms
+    fixpointatoms = 1
+    structure = ...ADJUST-YOUR-PATH.../pyridine-tilted.xyz
+End</code></pre><p>Other settings regarding the lattice and grid remain unchanged in comparison to previous tutorials.</p><pre><code class="nohighlight hljs"># Lattice of the Cu(111) surface
+Lattice
+    transx = 30
+    transy = 18
+    
+    vectors
+        2.51883   0.00000   0.00000
+        0.00000   4.36274   0.00000
+        0.00000   0.00000   1.00000
+    end
+End
+
+# On-top grid points of the Cu(111) surface
+Grid
+    points
+        0.00000   0.00000   0.00000
+        1.25942   2.18137   0.00000
+    end
+End</code></pre><p>However, the eventlist must be adapted to enable the adsorption of both adsorbates. </p><pre><code class="nohighlight hljs"># General settings for adsorption of pyridine  
+Events
+    steps = 1000
+
+    eventlist
+        1 ads 1 1.0
+        2 ads 1 1.0
+    end
+End</code></pre><h2 id="Running-the-Simulation"><a class="docs-heading-anchor" href="#Running-the-Simulation">Running the Simulation</a><a id="Running-the-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Running-the-Simulation" title="Permalink"></a></h2><p>To start the simulations use the <a href="../../run/#RSA.perform_multiple_rsa_runs"><code>perform_multiple_rsa_runs</code></a> function. Again, you should get a message that the RSA simulations are done after some time. </p><pre><code class="nohighlight hljs">NRuns = 1000
+inputfile_path = &quot;...ADJUST-YOUR-PATH.../input.inp&quot;
+rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, timings = perform_multiple_rsa_runs(NRuns, inputfile_path);</code></pre><h2 id="Evaluation"><a class="docs-heading-anchor" href="#Evaluation">Evaluation</a><a id="Evaluation-1"></a><a class="docs-heading-anchor-permalink" href="#Evaluation" title="Permalink"></a></h2><p>With the <a href="../../run/#RSA.plot_count_area_histograms"><code>plot_count_area_histograms</code></a> function you can obtain the information how many molecules of each adsorbate are present. As we work with two adsorbates, every output vector has six elemtens: Element 1-2 for adsorbate 1, element 3-4 for asdorbate 2, and element 5-6 for the sum of both adsorbates.</p><pre><code class="nohighlight hljs">histo, mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = plot_count_area_histograms(NRuns, rsa_results, Nmolecules, molecules, lattice, plotonly = false, area = 0.6);</code></pre><p>For a visualization you can use the <a href="../../run/#RSA.plot_RSA_run"><code>plot_RSA_run</code></a> function.</p><pre><code class="nohighlight hljs">avgvalue_id[6]
+surfaceplot = plot_RSA_run(rsa_results[ID of most average run].status, Ngrids, grids, Nmolecules, molecules, lattice)</code></pre><div class="admonition is-success" id="Tip-e4e430379d1be6ba"><header class="admonition-header">Tip<a class="admonition-anchor" href="#Tip-e4e430379d1be6ba" title="Permalink"></a></header><div class="admonition-body"><p>Change the <em>weight</em> of the adsorption events to test the impact on the adsorbate distribution.</p></div></div></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../02-benchmarks/">« Tutorial 2: Benchmarking of Input Settings</a><a class="docs-footer-nextpage" href="../04-multiple-grids/">Tutorial 4: Working with Multiple Grids »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Tuesday 24 March 2026 16:38">Tuesday 24 March 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
