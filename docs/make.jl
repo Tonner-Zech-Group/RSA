@@ -10,11 +10,11 @@ surface_subsection = ["systems/2026-Cu.md", "systems/2026-SiO2.md"]
 tutorial_subsection = ["tutorials/01-adsorption-stochastics.md", "tutorials/02-benchmarks.md", "tutorials/03-multiple-adsorbates.md", "tutorials/04-multiple-grids.md", "tutorials/05-events-rotations.md", "tutorials/06-events-diffusions.md", "tutorials/07-events-conformer-changes.md", "tutorials/08-events-conversions.md", "tutorials/09-hdf5.md"]
 
 # Local non-ideal solution
-makedocs(sitename="RSA.jl", remotes=nothing,
-   format = Documenter.HTML(assets = ["assets/custom.css"], prettyurls = false),
+#makedocs(sitename="RSA.jl", remotes=nothing,
+   #format = Documenter.HTML(assets = ["assets/custom.css"], prettyurls = false),
 
-#makedocs(sitename="RSA.jl",
-#   format = Documenter.HTML(assets = ["assets/custom.css"], prettyurls = true),
+makedocs(sitename="RSA.jl",
+   format = Documenter.HTML(assets = ["assets/custom.css"], prettyurls = true),
    pages = ["Home" => "index.md",
             "About RSA" => "rsa.md",
             "Installation" => "install.md",
@@ -31,7 +31,8 @@ makedocs(sitename="RSA.jl", remotes=nothing,
    ]
 )
 
-#deploydocs(
-#    repo = "github.com/Tonner-Zech-Group/RSA.jl.git",
-#)
+# comment for local build
+deploydocs(
+    repo = "github.com/Tonner-Zech-Group/RSA.jl.git",
+)
 
