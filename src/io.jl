@@ -633,7 +633,7 @@ function read_molecule_block!(io_id, Nmolecules, molecules, molecule_blockkeywor
                     molecule.label = Nmolecules
                 end
                 if Nmolecules > 1 
-                    if molecule.label in molecules[].label
+                    if any(molecule.label == ele.label for ele in molecules)
                         println("Molecules with identical label found. Label: " * string(molecule.label) * ".")
                         error("Input File Error")
                     end
