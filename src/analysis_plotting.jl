@@ -22,6 +22,7 @@ export plot_count_area_histograms
 export plot_effective_gap_size
 export gif
 export savefig
+export write_RSA_structures
 
 #
 # Definition of global variables

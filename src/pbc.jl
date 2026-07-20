@@ -165,18 +165,3 @@ function map_translation_to_gridpoint(unique_point, Nunique_points, transx, Ncel
     return unique_point + transy * Nunique_points + transx * Ncelly * Nunique_points
 
 end
-
-function apply_pbc_to_translation_value(value, boundary)
- 
-    # Apply PBC to the translation values
-    # Boundary is only equal to the actual boundary in case the "0" is not a valid element. Otherwise boundary should specify the number of intersections.
-    while value < 0
-        value += boundary
-    end
-    while value > (boundary - 1)
-        value -= boundary
-    end
-
-    return value
-
-end

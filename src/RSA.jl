@@ -36,9 +36,7 @@ using TimerOutputs
 #
 include("constants.jl")
 include("math.jl")
-include("statebased.jl")
 include("io.jl")
-include("evaluation.jl")
 include("pbc.jl")
 include("analysis_plotting.jl")
 
@@ -410,7 +408,7 @@ function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate
 
 end
 
-# Old version; still usefull to manually check whether two molecules overlap
+# Keep for debugging purposes, but not used in the current version of the code
 # Function to calculate the overlap of two molecules in 2D
 function check_for_overlap(molecule_coords_A, molecule_coords_B, molecule_elements_A, molecule_elements_B, fulllattice, invfulllattice)
 
@@ -2219,4 +2217,4 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path, timer; hdf5=false)
 end
 
 
-end # module kMC
+end # module RSA
