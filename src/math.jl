@@ -236,14 +236,13 @@ end
 # A function to calculate a release and block matrix based on entries only available in the first or second matrix, respectively.
 function delta_matrix(matrix_A, matrix_B)
 
-    # Get the intersect of matrix A and B
+    # Create a set for each matrix
     Bcols = Set(eachcol(matrix_B))
-    intersect_matrix = matrix_A[:, @views [i for i in axes(matrix_A,2) if matrix_A[:,i] ∈ Bcols]]
-    Icols = Set(eachcol(intersect_matrix))
+    Acols = Set(eachcol(matrix_A))
     
     # Get the release and block matrix
-    release_matrix = matrix_A[:, @views [i for i in axes(matrix_A,2) if matrix_A[:,i] ∉ Icols]]
-    block_matrix = matrix_B[:, @views [i for i in axes(matrix_B,2) if matrix_B[:,i] ∉ Icols]]
+    release_matrix = matrix_A[:, @views [i for i in axes(matrix_A,2) if matrix_A[:,i] ∉ Bcols]]
+    block_matrix   = matrix_B[:, @views [i for i in axes(matrix_B,2) if matrix_B[:,i] ∉ Acols]]
 
     # Return the results
     return release_matrix, block_matrix
