@@ -100,7 +100,7 @@ To start the simulations use the [`perform_multiple_rsa_runs`](@ref) function. A
 ```
 NRuns = 1000
 inputfile_path = "...ADJUST-YOUR-PATH.../input.inp"
-rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, timings = perform_multiple_rsa_runs(NRuns, inputfile_path);
+rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events = perform_multiple_rsa_runs(NRuns, inputfile_path);
 ```
 
 ## Evaluation
