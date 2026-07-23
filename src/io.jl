@@ -1144,7 +1144,7 @@ function create_hdf5_output_file(inputfile_path)
     attributes(hdf5_id)["runs"] = "1"
 
     # Generate groups
-    Nlevel1 = 4
+    Nlevel1 = 3
     level1_groups = ["inputfile-info", "preparation-info", "run-info"]
     for groups_id in 1:Nlevel1
         create_group(hdf5_id, level1_groups[groups_id])
