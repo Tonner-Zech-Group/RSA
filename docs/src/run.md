@@ -49,5 +49,4 @@ RSA.molecule_struct
 RSA.grid_struct
 RSA.lattice_struct
 RSA.events_struct
-RSA.timings_struct
 ```
