@@ -6,7 +6,7 @@
 # Using statements
 #
 using ProgressBars
-
+using Plots
 
 #
 # Include statements
