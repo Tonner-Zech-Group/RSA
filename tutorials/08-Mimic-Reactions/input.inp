@@ -4,7 +4,7 @@ Molecule
     rotationangle = 60.0
     fixpointtype = atoms
     fixpointatoms = 1
-    structure = ./08-Mimic-Reactions/DES.xyz
+    structure = ./08-Mimic-Reactions/des.xyz
 End
 
 Molecule
@@ -12,7 +12,7 @@ Molecule
     rotationangle = 60.0
     fixpointtype = atoms
     fixpointatoms = 1
-    structure = ./08-Mimic-Reactions/Thiolate.xyz
+    structure = ./08-Mimic-Reactions/thiolate.xyz
 End
 
 # Lattice of the Cu(111) surface

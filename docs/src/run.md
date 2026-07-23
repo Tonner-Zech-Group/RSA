@@ -6,9 +6,9 @@ To start RSA simulations only two inputs, namely the number of simulations you w
 ```
 NRuns = 1000
 inputfile_path = "/home/fabian/Sync/Coding/Julia/Scripts/lattice.inp"
-rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, timings = perform_multiple_rsa_runs(NRuns, inputfile_path)
+rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events = perform_multiple_rsa_runs(NRuns, inputfile_path)
 ```
-As a result you will obtain all information found in the input file (*Nmolecules*, *molecules*, *Ngrids*, *grids*, *lattice*, *events*), the timings of the individual steps (*timings*), as well as all results of the rsa simulations (*rsa_results*). Details on the obtained objects are explained in the [Exported Functions](@ref) section as well as the [Datastructure](@ref) section.
+As a result you will obtain all information found in the input file (*Nmolecules*, *molecules*, *Ngrids*, *grids*, *lattice*, *events*), as well as all results of the rsa simulations (*rsa_results*). Details on the obtained objects are explained in the [Exported Functions](@ref) section as well as the [Datastructure](@ref) section.
 
 
 For simple analysis tasks, the obtained objects are simply passed to another function:
@@ -49,5 +49,4 @@ RSA.molecule_struct
 RSA.grid_struct
 RSA.lattice_struct
 RSA.events_struct
-RSA.timings_struct
 ```

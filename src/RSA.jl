@@ -18,13 +18,9 @@ module RSA
 #
 # Using statements
 #
-using DataFrames
-using CSV
 using LinearAlgebra
-using Plots
-using Printf
-using Dates
-using HDF5
+using TimerOutputs
+using TimerOutputs: NoTimerOutput
 
 #
 # General head section of any file within this module 
@@ -35,9 +31,7 @@ using HDF5
 #
 include("constants.jl")
 include("math.jl")
-include("statebased.jl")
 include("io.jl")
-include("evaluation.jl")
 include("pbc.jl")
 include("analysis_plotting.jl")
 
@@ -58,43 +52,6 @@ export perform_multiple_rsa_runs
 # Definition of structs
 # Use @kwdef to define default values
 #
-
-#= This is no longer used as it heavily affects the runtime of RSA steps 
-@kwdef mutable struct rsa_timings_struct
-    RSA_update_rateconstants::Float64 = 0.0
-    RSA_select_events::Float64 = 0.0
-    RSA_update_event_list::Float64 = 0.0
-    RSA_compile_information::Float64 = 0.0
-end
-=#
-
-"""
-Mutable struct to store all timings of multiple RSA runs.
-
-# Fields
-- `Processing_Input`: Time for reading and processing input files.
-- `Calculation_gridpoint_distance`: Time for calculating distances between all grid points.
-- `Calculation_translation_distances`: Time for calculating all translation distances.
-- `Calculation_rotation_distances`: Time for calculating distances between all rotations.
-- `Calculation_affected_points`: Time used to find all affected points for every event.
-- `Calculation_overlap`: Time used to judge the overlap of two molecules (also included in previous timing).
-- `Calculation_rateconstants`: Time used to rearrange weigths of the events.
-- `Calculation_neighbour_list`: Time to calculate a neighbour list for every grid point.
-- `RSA_runs`: Time spend in RSA runs.
-"""
-@kwdef mutable struct timings_struct
-    Processing_Input::Float64 = 0.0
-    Calculation_gridpoint_distance::Float64 = 0.0
-    Calculation_translation_distances::Float64 = 0.0
-    Calculation_rotation_distances::Float64 = 0.0
-    #Calculation_length_sums::Float64 = 0.0 currently not used
-    Calculation_affected_points::Float64 = 0.0
-    Calculation_overlap::Float64 = 0.0
-    Calculation_rateconstants::Float64 = 0.0
-    Calculation_neighbour_list::Float64 = 0.0
-    RSA_runs::Float64 = 0.0
-    #RSA::Vector{rsa_timings_struct} = Vector{rsa_timings_struct}(undef,0)
-end
 
 """
 Mutable struct to store all results of multiple RSA runs.
@@ -409,7 +366,7 @@ function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate
 
 end
 
-# Old version; still usefull to manually check whether two molecules overlap
+# Keep for debugging purposes, but not used in the current version of the code
 # Function to calculate the overlap of two molecules in 2D
 function check_for_overlap(molecule_coords_A, molecule_coords_B, molecule_elements_A, molecule_elements_B, fulllattice, invfulllattice)
 
@@ -776,7 +733,7 @@ end
 # The eventlist is structured by the label of the gridpoint and possible rotations of the molecule
 # Each eventlist entry is a vector: 1st value is the affected gridpoint; ever other value is the affected orientation
 function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids, grids, lattice, events, 
-                unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, timings)
+                unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices)
     
 
     # As reminder: For any distance between two atoms: Take the diffrence of the unitcell gridpoins + two translation vectors + rotations difference. At the end convert to cartesian coordinates.
@@ -885,13 +842,11 @@ function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids,
                                     # with rotation: Trotation_id
 
                                     # Check for overlap
-                                    start_time = time()
                                     overlap = check_for_atom_overlap(fractional_points_difference_vector, points_difference, 
                                                                 molecules, molecule_id, rotation_id, Tmolecule_id, Trotation_id,
                                                                 lattice, rotation_difference_matrices, overlap_2d)
 
-                                    end_time = time()
-                                    timings.Calculation_overlap += end_time - start_time
+
                                     # Are these two molecules overlapping?
                                     if overlap
                                         Noverlaps += 1
@@ -919,7 +874,7 @@ function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids,
 
 
     # Return the result
-    return Affected_Points_Rotations, timings
+    return Affected_Points_Rotations
 
 end
 
@@ -1061,63 +1016,36 @@ end
 # This function calculates the inital matrices needed in the kMC run
 # Finally, the event list for every unitcell gridpoint is generated
 # It first calculates all rotation structes and all distance & difference matrices
-function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events, timings)
+function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events)
 
     # Create all arrays and perform the initial array calculations
 
     # Calculate the difference vectors for all points within the unitcell
-    start_time = time()
     unit_cell_gridpoints_difference = calculate_unit_cell_gridpoints_difference_vectors(Ngrids, grids, lattice)
-    end_time = time()
-    timings.Calculation_gridpoint_distance = end_time-start_time
-    @printf "Timings - Calculation of gridpoint distances [in s]: %.2f \n" timings.Calculation_gridpoint_distance
 
     # Calculate the distance vectors for every combination of translation vectors
     # Hint: Two values of the resulting matrix have to be substracted to get the actual difference vector as the "distance vector" is relative to the origin
-    start_time = time()
     translation_distance_vectors = calculate_translation_distance_vectors(lattice)
-    end_time = time()
-    timings.Calculation_translation_distances = end_time-start_time
-    @printf "Timings - Calculation of translation vectors distances [in s]: %.2f \n" timings.Calculation_translation_distances
 
     # Calculate the difference vectors between atoms for every possible combination of rotating two structures
-    start_time = time()
     rotation_difference_matrices = calculate_rotation_difference_matrices(Nmolecules, molecules, lattice)
-    end_time = time()
-    timings.Calculation_rotation_distances = end_time-start_time
-    @printf "Timings - Calculation of rotation differences [in s]: %.2f \n" timings.Calculation_rotation_distances
 
     # Calculate the sum of atomic radii --> currently not used as it is not speeding up the simulation
-    #start_time = time()
     #length_sums = calculate_length_sums(Nmolecules, molecules)
-    #end_time = time()
-    #timings.Calculation_length_sums = end_time-start_time
 
     # Generate a list for every gridpoint of the unitcell & rotation of the molecule
     # This list contains every affected gridpoint & rotation to update all affected gridpoints as the consequence of a kMC event
-    start_time = time()
-    Affected_Points_Rotations, timings = generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids, grids, lattice, events, 
-                            unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, timings)
-    end_time = time()
-    timings.Calculation_affected_points = end_time-start_time
-    @printf "Timings - Calculation of affected gridpoints per event [in s]: %.2f \n" timings.Calculation_affected_points
+    Affected_Points_Rotations = generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids, grids, lattice, events, 
+                            unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices)
 
     # Use events to rearrange rate constants
-    start_time = time()
     rate_constants_info = sort_rate_constants_per_event(Nmolecules, Ngrids, events)
-    end_time = time()
-    timings.Calculation_rateconstants = end_time-start_time
-    @printf "Timings - Calculation of rate constants [in s]: %.2f \n" timings.Calculation_rateconstants
 
     # Create a neighbour list for every unique gridpoint
-    start_time = time()
     neighbour_list = create_neighbour_list(Nmolecules, Ngrids, rate_constants_info, lattice, grids, events, unit_cell_gridpoints_difference, translation_distance_vectors)
-    end_time = time()
-    timings.Calculation_neighbour_list = end_time-start_time
-    @printf "Timings - Calculation of neighbour lists [in s]: %.2f \n" timings.Calculation_neighbour_list
 
     # Return the obtained matrices
-    return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list, timings
+    return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list
 
 end
 
@@ -1138,8 +1066,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     # Step 0 - Collecting information
     # Get a list of all points to update and check
     # 
-
-    #start_time = time() 
 
     # Information on the selected point and molecule
     self_grid = selected_grid_type
@@ -1169,10 +1095,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     if selected_event_type == 3
         push!(list_affected_points, [target_grid, target_point])
     end
-
-    #end_time = time()
-    #println("Time of initalization: " * string(end_time-start_time))
-    #start_time = time()  
 
     # Get the affected points for self and targets
     # These points are directly mapped to the actual points
@@ -1228,10 +1150,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     
     #return release_matrix, block_matrix
 
-    #end_time = time()
-    #println("Time of delta matrix: " * string(end_time-start_time))
-    #start_time = time()  
-
     #
     # Step 1 - Update local information
     # 
@@ -1257,9 +1175,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         rsa_gridpoints[self_grid][self_point].adsorbed_rotation = target_rotation
     end
     
-    #end_time = time()
-    #println("Update time of local information: " * string(end_time-start_time))
-    #start_time = time()  
 
     #
     # Step 2 - Update possible rotations for all grid points
@@ -1330,9 +1245,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
 
     end
 
-    #end_time = time()
-    #println("Update time of possible rotations: " * string(end_time-start_time))
-    #start_time = time()  
 
     #return list_affected_points
 
@@ -1346,10 +1258,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
             rsa_gridpoints[affected_point[1]][affected_point[2]].Nfree_rotation[molecule_id] = length(rsa_gridpoints[affected_point[1]][affected_point[2]].reduced_rotation[molecule_id])
         end
     end
-
-    #end_time = time()
-    #println("Update time of reduced rotations: " * string(end_time-start_time))
-    #start_time = time()  
 
 
     #
@@ -1390,10 +1298,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         end
         
     end
-
-    #end_time = time()
-    #println("Creation time of diffusion points list: " * string(end_time-start_time))
-    #start_time = time()  
 
     #return list_diffusion_points
 
@@ -1516,9 +1420,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
 
     end
 
-    #end_time = time()
-    #println("Update time of diffusion vector: " * string(end_time-start_time))
-    #start_time = time()  
 
     # Update the reduced diffusion vector and the number of free diffusion targets
     for diffusion_point in list_diffusion_points
@@ -1529,10 +1430,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
             rsa_gridpoints[dif_grid][dif_point].Ntarget_diffusion[dif_ads_molecule][grid_id] = length(rsa_gridpoints[dif_grid][dif_point].reduced_diffusion[dif_ads_molecule][grid_id])
         end
     end
-
-    #end_time = time()
-    #println("Update time of reduced diffusion: " * string(end_time-start_time))
-    #start_time = time() 
 
 
     #
@@ -1545,8 +1442,6 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         rsa_gridpoints[element[1]][element[2]] = update_rate_constants_and_events(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info)
     end
 
-    #end_time = time()
-    #println("Update time of rate constants: " * string(end_time-start_time)) 
 
 end
 
@@ -1943,14 +1838,13 @@ function select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, t
 end
 
 # Invoke all routines for a single rsa step
-function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption)
+function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, timer)
 
     # Increase the step counter
     rsa_run_results.Nsteps += 1
 
     # Create total rate constants
-    #start_time = time()
-    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
+    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant" calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
     #=
     println("Total rate constant: "*string(total_rate_constant))
     println("Cummulative grid rate constant: "*string(cumulative_grid_rate_constants))
@@ -1962,35 +1856,30 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     if force_adsorption == true && total_events_possible == 0
         # As an adsorption event can not be forced the rate constants are recalculated without forced adsorption
         force_adsorption = false
-        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
+        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant 2" calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
     end
-    #end_time = time()
-    #rsa_timings[1] += end_time-start_time
 
 
     # Stop the RSA run in case no reaction event is possible
     if total_events_possible == 0
         push!(rsa_run_results.randomseed, -1)
-        rsa_run_results.stepinfo, rsa_run_results.size = fill_preallocated_status_matrix!(rsa_run_results.size, rsa_run_results.stepsize, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, 0, 0, 0, 0, 0, 0, 0)
+        rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix!(rsa_run_results.size, rsa_run_results.stepsize, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, 0, 0, 0, 0, 0, 0, 0)
         return
     end
 
     # Select event
-    #start_time = time()
     random_number, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, rsa_gridpoints, Ngrids, grids, Nmolecules, rate_constants_info, force_adsorption)
-    #end_time = time()
-    #rsa_timings[2] += end_time-start_time
 
     # Store information
-    #start_time = time()
     # Collect the random numbers
-    push!(rsa_run_results.randomseed, random_number)
+    @timeit timer "Randomseed" push!(rsa_run_results.randomseed, random_number)
     # Count the selected events
     rsa_run_results.Nevents[selected_molecule, selected_grid_type][selected_event_type] += 1
     # Store all step information
-    rsa_run_results.stepinfo, rsa_run_results.size = fill_preallocated_status_matrix!(rsa_run_results.size, rsa_run_results.stepsize, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2)
+    rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix!(rsa_run_results.size, rsa_run_results.stepsize, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2)
 
     # Update the status matrix
+    @timeit timer "Status matrix" begin
     if selected_event_type == 1
         rsa_run_results.status = hcat(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point, selected_event])
     elseif selected_event_type == 2
@@ -2003,15 +1892,11 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
         change_column = findfirst_column(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
         rsa_run_results.status[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
     end
-    #end_time = time()
-    #rsa_timings[4] += end_time-start_time
-    
+    # timeit end
+    end
 
     # Update event list
-    #start_time = time()
-    rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
-    #end_time = time()
-    #rsa_timings[3] += end_time-start_time
+    @timeit timer "Update eventlist" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
 
     # Return additional information for IO etc
     #return 
@@ -2019,10 +1904,10 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
 end
 
 # Invoke all routines for a complete rsa run (initialization is not included)
-function perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, neighbour_list)
+function perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, neighbour_list, timer)
 
     # Initialization of the grid
-    rsa_gridpoints = grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
+    rsa_gridpoints = @timeit timer "Grid-Ini" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
     
     # Initialization of event counter
     non_adsorption_events = 0
@@ -2043,7 +1928,7 @@ function perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, 
     while true
 
         # Perform RSA step
-        perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption)
+        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, timer)
 
         # Break conditions:
         # No further events possible
@@ -2111,35 +1996,23 @@ Returns input information and results as structs in the follwing order:
 - `grids`: Vector storing all information concerning the grid types. Every vector entry is a grid_struct struct containing all information for a **single** grid type.
 - `lattice`: A lattice_struct containing all information of the used lattice.
 - `events`: A events_struct containing all information of the events and general RSA settings.
-- `timings`: A timings_struct containing some timing information.
 
 
 """
-function perform_multiple_rsa_runs(NRuns, inputfile_path; hdf5=false)
+function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutput,NoTimerOutput}=NoTimerOutput(), hdf5=false)
 
     #
     # RSA initialization
     #
 
+    # TimerOutputs
+    @timeit timer "Initialization" begin
+
     # Currently there are no restart features
     Nrun = 1
 
-    # Generate structs
-    timings = timings_struct()
-    
-    #= removed for better performance
-    timings.RSA = Vector{rsa_timings_struct}(undef,NRuns)
-    for rsa_rund_id in 1:NRuns
-        timings.RSA[rsa_rund_id] = rsa_timings_struct()
-    end
-    =#
-
     # Input read input files
-    start_time = time()
     Nmolecules, molecules, Ngrids, grids, lattice, events = read_input(inputfile_path)
-    end_time = time()
-    timings.Processing_Input = end_time-start_time
-    @printf "Timings - Input file processing [in s]: %.2f \n" timings.Processing_Input
 
     # Create HDF5 output file
     if hdf5 == true
@@ -2148,7 +2021,7 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; hdf5=false)
     end
 
     # Generate all relevant matrices
-    unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list, timings = rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events, timings)
+    unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list = rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events)
     
     # Add to the HDF5 file
     if hdf5 == true
@@ -2156,46 +2029,55 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; hdf5=false)
     end
 
     # For debugging:
-    #return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list, timings
+    #return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list
 
     # Allocate all matrices to store information for every run
     rsa_results = Vector{rsa_run_results_struct}(undef, NRuns)
+
+    # TimerOutputs
+    end
     
     #
     # Perform rsa runs
     #
-    println("Starting the RSA simulations ...")
-    start_time = time()
+
+    # TimerOutput
+    @timeit timer "Simulations" begin
+
     # The execution of kMC runs is parallized while each run is serial
-    Threads.@threads for run_id in 1:NRuns
+    for run_id in 1:NRuns
 
         # Perform the RSA run
-        rsa_results[run_id] = perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, neighbour_list)
+        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, neighbour_list, timer)
 
     end
-    println("... done!")
-    end_time = time()
-    timings.RSA_runs = end_time-start_time
-    @printf "Timings - RSA simulations [in s]: %.2f \n" timings.RSA_runs
+
+    # TimerOutputs
+    end
+
+    # TimerOutput
+    @timeit timer "Output" begin
 
     # Add results to HDF5 file
     if hdf5 == true
-        write_hdf5_timings(hdf5_file, Nrun, timings)
         write_rsa_results(hdf5_file, Nrun, NRuns, rsa_results)
         println("All information are stored in the following HDF5 file:")
         println(hdf5_file)
+    end
+
+    # TimerOutputs
     end
 
 
     #
     # Return all results
     #
-    return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, timings
+    return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events
 
     # For debugging
-    #return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list, timings
+    #return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list
 
 end
 
 
-end # module kMC
+end # module RSA

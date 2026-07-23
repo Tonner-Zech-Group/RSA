@@ -3,6 +3,12 @@
 #
 
 #
+# Using statements
+#
+using HDF5
+using Dates
+
+#
 # Include statements
 #
 
@@ -2058,107 +2064,6 @@ function read_preparation_information(hdf5_file, Nrun, Ngrids, grids, lattice, N
     # Return the results
     return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, neighbour_list, rate_constants_info
 
-end
-
-# A function to write timing information
-function write_hdf5_timings(hdf5_file, Nrun, timings)
-    
-    # Check whether the file already exists
-    if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
-        error("Output File Error")
-    end
-
-    # Open the file
-    hdf5_id = h5open(hdf5_file, "cw")
-
-    # Get the group id 
-    main_id = hdf5_id["timings"]["run-"*string(Nrun)]
-
-    # Write general timings
-    main_id["Processing_Input"] = timings.Processing_Input
-    main_id["Calculation_gridpoint_distance"] = timings.Calculation_gridpoint_distance
-    main_id["Calculation_translation_distances"] = timings.Calculation_translation_distances
-    main_id["Calculation_rotation_distances"] = timings.Calculation_rotation_distances
-    #main_id["Calculation_length_sums"] = timings.Calculation_length_sums Currently not used
-    main_id["Calculation_affected_points"] = timings.Calculation_affected_points
-    main_id["Calculation_overlap"] = timings.Calculation_overlap
-    main_id["Calculation_rateconstants"] = timings.Calculation_rateconstants
-    main_id["Calculation_neighbour_list"] = timings.Calculation_neighbour_list
-    main_id["RSA_runs"] = timings.RSA_runs
-
-    # Currently not used
-    #=
-    # Combine all timings in one matrix
-    rsa_timings_matrix = Matrix{Float64}(undef,4,0)
-    for rsa_run_id in eachindex(timings.RSA)
-        rsa_timings_matrix = hcat(rsa_timings_matrix, [timings.RSA[rsa_run_id].RSA_update_rateconstants, timings.RSA[rsa_run_id].RSA_select_events, timings.RSA[rsa_run_id].RSA_update_event_list, timings.RSA[rsa_run_id].RSA_compile_information])
-    end
-    
-
-    # Write the results of every RSA run
-    main_id["RSA_runs"] = rsa_timings_matrix
-    =#
-
-    # Close the file
-    close(hdf5_id)
-
-end
-
-# A funktion to read timing information
-function hdf5_read_timings(hdf5_file, Nrun)
-
-    # Check whether the file already exists
-    if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
-        error("Output File Error")
-    end
-
-    # Open the file
-    hdf5_id = h5open(hdf5_file, "r")
-
-    # Get the group id 
-    main_id = hdf5_id["timings"]["run-"*string(Nrun)]
-
-    # Create the struct
-    timings = timings_struct()
-
-    # Read the general timings
-    timings.Processing_Input = read(main_id, "Processing_Input")
-    timings.Calculation_gridpoint_distance = read(main_id, "Calculation_gridpoint_distance")
-    timings.Calculation_translation_distances = read(main_id, "Calculation_translation_distances")
-    timings.Calculation_rotation_distances = read(main_id, "Calculation_rotation_distances")
-    # timings.Calculation_length_sums = read(main_id, "Calculation_length_sums") currently not used
-    timings.Calculation_affected_points = read(main_id, "Calculation_affected_points")
-    timings.Calculation_overlap = read(main_id, "Calculation_overlap")
-    timings.Calculation_rateconstants = read(main_id, "Calculation_rateconstants")
-    timings.Calculation_neighbour_list = read(main_id, "Calculation_neighbour_list")
-    timings.RSA_runs = read(main_id, "RSA_runs")
-
-    # Currently not used
-    #=
-    # Read the rsa run timings
-    rsa_timings_matrix = read(main_id, "RSA_runs")
-
-    # Rearrange the matrix to the struct
-    timings.RSA = Vector{rsa_timings_struct}(undef, size(rsa_timings_matrix, 2))
-    for rsa_rund_id in 1:size(rsa_timings_matrix, 2)
-        timings.RSA[rsa_rund_id] = rsa_timings_struct()
-    end
-    for colum_id in axes(rsa_timings_matrix, 2)
-        timings.RSA[colum_id].RSA_update_rateconstants = rsa_timings_matrix[1, colum_id]
-        timings.RSA[colum_id].RSA_select_events = rsa_timings_matrix[2, colum_id]
-        timings.RSA[colum_id].RSA_update_event_list = rsa_timings_matrix[3, colum_id]
-        timings.RSA[colum_id].RSA_compile_information = rsa_timings_matrix[4, colum_id]
-    end
-    =#
-
-    # Close the file
-    close(hdf5_id)
-
-    # Return the results
-    return timings
-    
 end
 
 # A function to write the results of RSA runs
