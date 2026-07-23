@@ -2237,10 +2237,7 @@ function read_hdf5_output_file(hdf5_file)
     # Read RSA results
     rsa_results = read_rsa_results(hdf5_file, Nrun, Nmolecules, Ngrids)
 
-    # Read timings
-    timings = hdf5_read_timings(hdf5_file, Nrun)
-
     # Return results
-    return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, timings
+    return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events
     
 end
