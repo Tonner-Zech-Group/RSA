@@ -80,9 +80,9 @@ end
 @kwdef mutable struct rate_constants_struct
     ads::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)         # [Molecule, Gridtype]: rate constant
     rot::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)         # [Molecule, Gridtype]: rate constant
-    dif::Array{Float64} = Array{Float64}(undef, 0, 0, 0)        # [Molecule, Gridtype, Gridtype]: rate constant
-    dif_rad::Array{Float64} = Array{Float64}(undef, 0, 0, 0)    # [Molecule, Gridtype, Gridtype]: diffusion radius
-    con::Array{Float64} = Array{Float64}(undef, 0, 0, 0)        # [Molecule, Gridtype, Molecule]: rate constant
+    dif::Array{Float64, 3} = Array{Float64}(undef, 0, 0, 0)        # [Molecule, Gridtype, Gridtype]: rate constant
+    dif_rad::Array{Float64, 3} = Array{Float64}(undef, 0, 0, 0)    # [Molecule, Gridtype, Gridtype]: diffusion radius
+    con::Array{Float64, 3} = Array{Float64}(undef, 0, 0, 0)        # [Molecule, Gridtype, Molecule]: rate constant
 end
 
 # This struct is generated to hold all information for a single gridpoint in a kMC run
