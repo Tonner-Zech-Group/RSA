@@ -2116,7 +2116,6 @@ function write_hdf5_rsa_run(hdf5_file, Nrun, run_id, rsa_result)
     group_id["Nsteps"] = rsa_result.Nsteps
     group_id["stepinfo"] = rsa_result.stepinfo
     group_id["Nevents"] = tmp_Nevents
-    group_id["stepsize"] = rsa_result.stepsize
     group_id["size"] = rsa_result.size
 
     # Close the file
@@ -2179,7 +2178,6 @@ function read_hdf5_rsa_run(hdf5_file, Nrun, run_id, Nmolecules, Ngrids)
     rsa_result.Nsteps = read(group_id, "Nsteps") 
     rsa_result.stepinfo = read(group_id, "stepinfo")
     tmp_Nevents = read(group_id, "Nevents")
-    rsa_result.stepsize = read(group_id, "stepsize")
     rsa_result.size = read(group_id, "size")
 
     # Transform tmp_Nevents

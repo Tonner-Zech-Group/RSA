@@ -64,7 +64,6 @@ Mutable struct to store all results of multiple RSA runs.
 - `stepinfo`: Matrix storing information for every RSA step in columns (Total number of possible events, Number of possible ads/rot/dif/con events, selected grid type, selected gridpoint, selected molecule type, selected event type, selected subevent, selected event, selected subevent).
 
 # Technical fields
-- `stepsize`: Factor to increase internal matrices. 
 - `size`: Current size of internal matrices.
 """
 @kwdef mutable struct rsa_run_results_struct
@@ -72,7 +71,6 @@ Mutable struct to store all results of multiple RSA runs.
     status::Matrix{Int64} = Matrix{Int64}(undef, 4, 0) # molecule type, on grid type, on gridpoint, in rotation
     Nsteps::Int64 = 0
     Nevents::Matrix{Vector{Int64}} = Matrix{Int64}(undef, 0, 0) # molecule type, grid type; Vector: 1: Ads, 2: Rot, 3: Dif, 4: Con
-    stepsize::Int64 = 100_000
     size::Int64 = 0
     stepinfo::Matrix{Int64} = Matrix{Int64}(undef, 12, 0) # Nevents possible, Nads & Nrot & Ndif & Ncon possible, selected grid type, selected gridpoint, selected molecule, selected event type, selected sub event, selected event, selected event 2 
 end
@@ -1863,7 +1861,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     # Stop the RSA run in case no reaction event is possible
     if total_events_possible == 0
         push!(rsa_run_results.randomseed, -1)
-        rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix!(rsa_run_results.size, rsa_run_results.stepsize, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, 0, 0, 0, 0, 0, 0, 0)
+        rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, 0, 0, 0, 0, 0, 0, 0)
         return
     end
 
@@ -1876,7 +1874,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     # Count the selected events
     rsa_run_results.Nevents[selected_molecule, selected_grid_type][selected_event_type] += 1
     # Store all step information
-    rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix!(rsa_run_results.size, rsa_run_results.stepsize, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2)
+    rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2)
 
     # Update the status matrix
     @timeit timer "Status matrix" begin
