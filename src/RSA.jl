@@ -273,7 +273,8 @@ function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate
             unique_point, mapping_x, mapping_y = grids[grid_id].mapping[:,points_id]
 
             # Generate the list of possible diffusion targets (these are relative to the unique point)
-            target_diffusion = deepcopy(neighbour_list[grid_id][unique_point])
+            # target_diffusion = deepcopy(neighbour_list[grid_id][unique_point]) that creates a lot of overhead especially for memory allocation
+            target_diffusion = [[copy(end_grid_list) for end_grid_list in molecule_list] for molecule_list in neighbour_list[grid_id][unique_point]]
 
             # Generate Ntarget_diffusion
             Ntarget_diffusion = Vector{Vector{Int64}}(undef, Nmolecules)
@@ -333,7 +334,21 @@ function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate
             end
             
             # Get the final struct with all information previously collected
-            pointsvec[points_id] = deepcopy(gridpoint_struct(Nevents, Nads, Ndif, Nrot, Ncon, Trateconst, Trateconst_ads, Trate_molec, Cumulative_rate_molecules, Cumulative_rate_molecules_ads, Trate_event, Cumulative_rate_events, Trate_diffusion, Cumulative_rate_diffusions, Trate_conformer, Cumulative_rate_conformers, target_diffusion, bool_diffusion, reduced_diffusion, Ntarget_diffusion, origin_diffusion, info_event, bool_occupied, adsorbed_molecule, adsorbed_rotation, bool_rotation, reduced_rotation, Nfree_rotation, Nblocked_rotation))
+            # To replace the deepcopy (again a lot of overhead):
+            # target_diffusion, bool_diffusion, reduced_diffusion, Ntarget_diffusion, origin_diffusion are created for every point and therfore do not need to be copied
+            # All integer, float, and boolean values are copied by default: Nevents, Nads, Ndif, Nrot, Ncon, Trateconst, Trateconst_ads, bool_occupied, adsorbed_molecule, adsorbed_rotation
+            # All vectors get a single "copy": Trate_molec, Cumulative_rate_molecules, Cumulative_rate_molecules_ads, info_event, Nfree_rotation
+            # Vectors of vectors need a copy in a for loop: Trate_event, Cumulative_rate_events, bool_rotation, reduced_rotation, Nblocked_rotation 
+            pointsvec[points_id] = gridpoint_struct(Nevents, Nads, Ndif, Nrot, Ncon, Trateconst, Trateconst_ads, 
+                copy(Trate_molec), copy(Cumulative_rate_molecules), copy(Cumulative_rate_molecules_ads), 
+                [copy(ele) for ele in Trate_event], [copy(ele) for ele in Cumulative_rate_events], 
+                copy(Trate_diffusion), copy(Cumulative_rate_diffusions), copy(Trate_conformer), copy(Cumulative_rate_conformers), 
+                target_diffusion, bool_diffusion, reduced_diffusion, Ntarget_diffusion, origin_diffusion, 
+                copy(info_event), 
+                bool_occupied, adsorbed_molecule, adsorbed_rotation, 
+                [copy(ele) for ele in bool_rotation], [copy(ele) for ele in reduced_rotation], 
+                copy(Nfree_rotation), 
+                [copy(ele) for ele in Nblocked_rotation])
 
         end
 
