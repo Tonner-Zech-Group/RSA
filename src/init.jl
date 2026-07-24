@@ -75,6 +75,210 @@ end
 # Function definitions
 #
 
+# A function to define all grid strcut values that are identical for every point of a given grid type. 
+function grid_level_initials(grid_id, Ngrids, Nmolecules, molecules, rate_constants_info)
+
+    # General information (empty/unoccupied initial state, identical for every point)
+    adsorbed_molecule = 0
+    adsorbed_rotation = 0
+    bool_occupied = false
+
+    # General information per molecule
+    info_event = Vector{Bool}(undef, Nmolecules)
+    info_event .= false
+    for molecule_id in 1:Nmolecules
+        if ! isempty(findall(x -> x == grid_id, molecules[molecule_id].grids))
+            info_event[molecule_id] = true
+        end
+    end
+
+    # Generate the Nfree_rotation
+    Nfree_rotation = Vector{Int64}(undef, Nmolecules)
+    Nfree_rotation .= 0
+    for molecule_id in 1:Nmolecules
+        if info_event[molecule_id] == true
+            Nfree_rotation[molecule_id] = molecules[molecule_id].Nrotations
+        end
+    end
+
+    # Generate the bool_rotation
+    bool_rotation = Vector{Vector{Bool}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        if info_event[molecule_id] == true
+            bool_rotation[molecule_id] = [true for i in 1:molecules[molecule_id].Nrotations]
+        else
+            bool_rotation[molecule_id] = []
+        end
+    end
+
+    # Generate reduced_rotation
+    reduced_rotation = Vector{Vector{Int64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        reduced_rotation[molecule_id] = findall(x->x==true, bool_rotation[molecule_id])
+    end
+
+    # Generate the Nblocked_rotation
+    Nblocked_rotation = Vector{Vector{Int64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        if info_event[molecule_id] == true
+            Nblocked_rotation[molecule_id] = [0 for i in 1:molecules[molecule_id].Nrotations]
+        else
+            Nblocked_rotation[molecule_id] = []
+        end
+    end
+
+    # Generate Trate_conformer and Cumulative_rate_conformers
+    Trate_conformer = Vector{Float64}(undef, Nmolecules)
+    Trate_conformer .= 0.0
+    Cumulative_rate_conformers = Vector{Float64}(undef, Nmolecules)
+    Cumulative_rate_conformers .= 0.0
+
+    # Generate Trate_diffusion and Cumulative_rate_diffusions
+    Trate_diffusion = Vector{Float64}(undef, Ngrids)
+    Trate_diffusion .= 0.0
+    Cumulative_rate_diffusions = Vector{Float64}(undef, Ngrids)
+    Cumulative_rate_diffusions .= 0.0
+
+    # Generate Trate_event
+    # Only use positve rate constants
+    Trate_event = Vector{Vector{Float64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        Trate_event[molecule_id] = zeros(4)
+        if rate_constants_info.ads[molecule_id, grid_id] < 0
+            Trate_event[molecule_id][1] = 0.0
+        else
+            Trate_event[molecule_id][1] = Nfree_rotation[molecule_id] * rate_constants_info.ads[molecule_id, grid_id]
+        end
+    end
+
+    # Generate Cumulative_rate_events
+    Cumulative_rate_events = Vector{Vector{Float64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        Cumulative_rate_events[molecule_id] = zeros(4)
+        cum_sum = 0
+        for event_id in 1:4
+            cum_sum += Trate_event[molecule_id][event_id]
+            Cumulative_rate_events[molecule_id][event_id] = cum_sum
+        end
+    end
+
+    # Generate Trate_molec
+    Trate_molec = Vector{Float64}(undef, Nmolecules)
+    Trate_molec .= 0.0
+    for molecule_id in 1:Nmolecules
+        if rate_constants_info.ads[molecule_id, grid_id] < 0
+            Trate_molec[molecule_id] = 0.0
+        else
+            Trate_molec[molecule_id] = Trate_event[molecule_id][1]
+        end
+    end
+
+    # Generate Cumulative_rate_molecules
+    Cumulative_rate_molecules = Vector{Float64}(undef, Nmolecules)
+    Cumulative_rate_molecules .= 0
+    cum_sum = 0
+    for molecule_id in 1:Nmolecules
+        cum_sum += Trate_molec[molecule_id]
+        Cumulative_rate_molecules[molecule_id] = cum_sum
+    end
+
+    # Generate Cumulative_rate_molecules_ads
+    Cumulative_rate_molecules_ads = Vector{Float64}(undef, Nmolecules)
+    Cumulative_rate_molecules_ads .= 0
+    cum_sum = 0
+    for molecule_id in 1:Nmolecules
+        cum_sum += Trate_event[molecule_id][1]
+        Cumulative_rate_molecules_ads[molecule_id] = cum_sum
+    end
+
+    # Generate Trateconst
+    Trateconst = Cumulative_rate_molecules[Nmolecules]
+
+    # Generate Trateconst_ads
+    Trateconst_ads = Cumulative_rate_molecules_ads[Nmolecules]
+
+    # Generate Nevents
+    Nads = sum(Nfree_rotation)
+    Nevents = Nads
+    Ndif = 0
+    Nrot = 0
+    Ncon = 0
+
+    return (; adsorbed_molecule, adsorbed_rotation, bool_occupied,
+             info_event, Nfree_rotation, bool_rotation, reduced_rotation, Nblocked_rotation,
+             Trate_conformer, Cumulative_rate_conformers, Trate_diffusion, Cumulative_rate_diffusions,
+             Trate_event, Cumulative_rate_events, Trate_molec, Cumulative_rate_molecules,
+             Cumulative_rate_molecules_ads, Trateconst, Trateconst_ads,
+             Nads, Nevents, Ndif, Nrot, Ncon)
+
+end
+
+# Restore the state of an already-built grid to its clean initial values
+# The static arrays (target_diffusion, origin_diffusion) are left untouched
+function reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
+
+    for grid_id in 1:Ngrids
+
+        # Get the initial values for this grid type
+        initial_grid = grid_level_initials(grid_id, Ngrids, Nmolecules, molecules, rate_constants_info)
+
+        for point_id in rsa_gridpoints[grid_id]
+
+            # Scalars
+            point_id.adsorbed_molecule = initial_grid.adsorbed_molecule
+            point_id.adsorbed_rotation = initial_grid.adsorbed_rotation
+            point_id.bool_occupied = initial_grid.bool_occupied
+            point_id.Nevents = initial_grid.Nevents
+            point_id.Nads = initial_grid.Nads
+            point_id.Ndif = initial_grid.Ndif
+            point_id.Nrot = initial_grid.Nrot
+            point_id.Ncon = initial_grid.Ncon
+            point_id.Trateconst = initial_grid.Trateconst
+            point_id.Trateconst_ads = initial_grid.Trateconst_ads
+            
+            # Vectors are replaced in place
+            copyto!(point_id.info_event, initial_grid.info_event)
+            copyto!(point_id.Trate_molec, initial_grid.Trate_molec)
+            copyto!(point_id.Cumulative_rate_molecules, initial_grid.Cumulative_rate_molecules)
+            copyto!(point_id.Cumulative_rate_molecules_ads, initial_grid.Cumulative_rate_molecules_ads)
+            copyto!(point_id.Trate_diffusion, initial_grid.Trate_diffusion)
+            copyto!(point_id.Cumulative_rate_diffusions, initial_grid.Cumulative_rate_diffusions)
+            copyto!(point_id.Trate_conformer, initial_grid.Trate_conformer)
+            copyto!(point_id.Cumulative_rate_conformers, initial_grid.Cumulative_rate_conformers)
+            copyto!(point_id.Nfree_rotation, initial_grid.Nfree_rotation)
+
+            for molecule_id in 1:Nmolecules
+
+                # Fixed-length per-molecule vectors
+                # Initially vectors of vectors
+                copyto!(point_id.Trate_event[molecule_id], initial_grid.Trate_event[molecule_id])
+                copyto!(point_id.Cumulative_rate_events[molecule_id], initial_grid.Cumulative_rate_events[molecule_id])
+                copyto!(point_id.bool_rotation[molecule_id], initial_grid.bool_rotation[molecule_id])
+                copyto!(point_id.Nblocked_rotation[molecule_id], initial_grid.Nblocked_rotation[molecule_id])
+
+                # The size of reduced_rotation might change during a run
+                # As a consequence I have to use copy instead of copyto
+                # Also a vector of vectors
+                point_id.reduced_rotation[molecule_id] = copy(initial_grid.reduced_rotation[molecule_id])
+
+                # Diffusion bookkeeping is derived from the static target_diffusion
+                # These vectors were initally generated for every point (that's why they are not copied from the initial_grid)
+                for grid_2_id in 1:Ngrids
+                    fill!(point_id.bool_diffusion[molecule_id][grid_2_id], false)
+                    empty!(point_id.reduced_diffusion[molecule_id][grid_2_id])
+                    point_id.Ntarget_diffusion[molecule_id][grid_2_id] = length(point_id.target_diffusion[molecule_id][grid_2_id])
+                end
+
+            end
+
+        end
+
+    end
+
+    return rsa_gridpoints
+
+end
+
 # A function generating a "gridpoint_struct" struct for every gridpoint and storing all values in a vector
 function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
     
@@ -90,132 +294,15 @@ function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate
         # Generate tmp matrix
         pointsvec = Vector{gridpoint_struct}(undef, grids[grid_id].Npoints)
 
-        # General information
-        adsorbed_molecule = 0
-        adsorbed_rotation = 0
-        bool_occupied = false
-        
-        # General information per molecule
-        info_event = Vector{Bool}(undef, Nmolecules)
-        info_event .= false
-        for molecule_id in 1:Nmolecules
-            if ! isempty(findall(x -> x == grid_id, molecules[molecule_id].grids))
-                info_event[molecule_id] = true
-            end
-        end
+        # Grid-level initial values, shared verbatim with reset_gridpoints!
+        (; adsorbed_molecule, adsorbed_rotation, bool_occupied,
+           info_event, Nfree_rotation, bool_rotation, reduced_rotation, Nblocked_rotation,
+           Trate_conformer, Cumulative_rate_conformers, Trate_diffusion, Cumulative_rate_diffusions,
+           Trate_event, Cumulative_rate_events, Trate_molec, Cumulative_rate_molecules,
+           Cumulative_rate_molecules_ads, Trateconst, Trateconst_ads,
+           Nads, Nevents, Ndif, Nrot, Ncon) =
+            grid_level_initials(grid_id, Ngrids, Nmolecules, molecules, rate_constants_info)
 
-        # Generate the Nfree_rotation
-        Nfree_rotation = Vector{Int64}(undef, Nmolecules)
-        Nfree_rotation .= 0
-        for molecule_id in 1:Nmolecules
-            if info_event[molecule_id] == true
-                Nfree_rotation[molecule_id] = molecules[molecule_id].Nrotations
-            end
-        end
-
-        # Generate the bool_rotation
-        bool_rotation = Vector{Vector{Bool}}(undef, Nmolecules)
-        for molecule_id in 1:Nmolecules
-            if info_event[molecule_id] == true
-                bool_rotation[molecule_id] = [true for i in 1:molecules[molecule_id].Nrotations]
-            else
-                bool_rotation[molecule_id] = []
-            end
-        end
-
-        # Generate reduced_rotation
-        reduced_rotation = Vector{Vector{Int64}}(undef, Nmolecules)
-        for molecule_id in 1:Nmolecules
-            reduced_rotation[molecule_id] = findall(x->x==true, bool_rotation[molecule_id])
-        end
-
-        # Generate the Nblocked_rotation
-        Nblocked_rotation = Vector{Vector{Int64}}(undef, Nmolecules)
-        for molecule_id in 1:Nmolecules
-            if info_event[molecule_id] == true
-                Nblocked_rotation[molecule_id] = [0 for i in 1:molecules[molecule_id].Nrotations]
-            else
-                Nblocked_rotation[molecule_id] = []
-            end
-        end
-
-        # Generate Trate_conformer and Cumulative_rate_conformers
-        Trate_conformer = Vector{Float64}(undef, Nmolecules)
-        Trate_conformer .= 0.0
-        Cumulative_rate_conformers = Vector{Float64}(undef, Nmolecules)
-        Cumulative_rate_conformers .= 0.0
-
-        # Generate Trate_diffusion and Cumulative_rate_diffusions
-        Trate_diffusion = Vector{Float64}(undef, Ngrids)
-        Trate_diffusion .= 0.0
-        Cumulative_rate_diffusions = Vector{Float64}(undef, Ngrids)
-        Cumulative_rate_diffusions .= 0.0
-
-        # Generate Trate_event
-        # Only use positve rate constants
-        Trate_event = Vector{Vector{Float64}}(undef, Nmolecules)
-        for molecule_id in 1:Nmolecules
-            Trate_event[molecule_id] = zeros(4)
-            if rate_constants_info.ads[molecule_id, grid_id] < 0
-                Trate_event[molecule_id][1] = 0.0
-            else
-                Trate_event[molecule_id][1] = Nfree_rotation[molecule_id] * rate_constants_info.ads[molecule_id, grid_id]
-            end
-        end
-
-        # Generate Cumulative_rate_events
-        Cumulative_rate_events = Vector{Vector{Float64}}(undef, Nmolecules)
-        for molecule_id in 1:Nmolecules
-            Cumulative_rate_events[molecule_id] = zeros(4)
-            cum_sum = 0
-            for event_id in 1:4
-                cum_sum += Trate_event[molecule_id][event_id]
-                Cumulative_rate_events[molecule_id][event_id] = cum_sum
-            end
-        end
-
-        # Generate Trate_molec 
-        Trate_molec = Vector{Float64}(undef, Nmolecules)
-        Trate_molec .= 0.0
-        for molecule_id in 1:Nmolecules
-            if rate_constants_info.ads[molecule_id, grid_id] < 0
-                Trate_molec[molecule_id] = 0.0
-            else
-                Trate_molec[molecule_id] = Trate_event[molecule_id][1]
-            end
-        end
-
-        # Generate Cumulative_rate_molecules
-        Cumulative_rate_molecules = Vector{Float64}(undef, Nmolecules)
-        Cumulative_rate_molecules .= 0
-        cum_sum = 0
-        for molecule_id in 1:Nmolecules
-            cum_sum += Trate_molec[molecule_id]
-            Cumulative_rate_molecules[molecule_id] = cum_sum
-        end
-
-        # Generate Cumulative_rate_molecules_ads
-        Cumulative_rate_molecules_ads = Vector{Float64}(undef, Nmolecules)
-        Cumulative_rate_molecules_ads .= 0
-        cum_sum = 0
-        for molecule_id in 1:Nmolecules
-            cum_sum += Trate_event[molecule_id][1]
-            Cumulative_rate_molecules_ads[molecule_id] = cum_sum
-        end
-
-        # Generate Trateconst
-        Trateconst = Cumulative_rate_molecules[Nmolecules]
-
-        # Generate Trateconst_ads
-        Trateconst_ads = Cumulative_rate_molecules_ads[Nmolecules]
-
-        # Generate Nevents
-        Nads = sum(Nfree_rotation)
-        Nevents = Nads
-        Ndif = 0
-        Nrot = 0
-        Ncon = 0
-        
         # Initialize all points
         for points_id in 1:grids[grid_id].Npoints
 

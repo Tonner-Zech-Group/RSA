@@ -935,11 +935,8 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
 end
 
 # Invoke all routines for a complete rsa run (initialization is not included)
-function perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, neighbour_list, timer)
+function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer)
 
-    # Initialization of the grid
-    rsa_gridpoints = @timeit timer "Grid-Ini" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
-    
     # Initialization of event counter
     non_adsorption_events = 0
 
@@ -1065,6 +1062,9 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # Allocate all matrices to store information for every run
     rsa_results = Vector{rsa_run_results_struct}(undef, NRuns)
 
+    # Build the initial grid once and reuse it across all runs
+    rsa_gridpoints = @timeit timer "Grid-Init" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
+
     # TimerOutputs
     end
     
@@ -1074,12 +1074,17 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
 
     # TimerOutput
     @timeit timer "Simulations" begin
-
-    # The execution of kMC runs is parallized while each run is serial
+    
+    # The execution is currently not parallelized as this version of the grid reset is not thread safe. The grid reset needs to be reimplemented in a thread safe manner to allow parallel execution of the runs.
     for run_id in 1:NRuns
 
+        # Restore the clean initial grid state before every run except the first
+        if run_id != 1
+            @timeit timer "Grid-Reset" reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
+        end
+
         # Perform the RSA run
-        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run(Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, neighbour_list, timer)
+        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer)
 
     end
 
