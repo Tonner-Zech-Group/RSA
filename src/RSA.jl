@@ -899,7 +899,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     end
 
     # Select event
-    random_number, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, rsa_gridpoints, Ngrids, grids, Nmolecules, rate_constants_info, force_adsorption)
+    random_number, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @timeit timer "Select event" select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, rsa_gridpoints, Ngrids, grids, Nmolecules, rate_constants_info, force_adsorption)
 
     # Store information
     # Collect the random numbers
@@ -1101,8 +1101,8 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # Add results to HDF5 file
     if hdf5 == true
         write_rsa_results(hdf5_file, Nrun, NRuns, rsa_results)
-        println("All information are stored in the following HDF5 file:")
-        println(hdf5_file)
+        #println("All information are stored in the following HDF5 file:")
+        #println(hdf5_file)
     end
 
     # TimerOutputs
