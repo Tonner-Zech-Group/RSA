@@ -628,13 +628,11 @@ end
 
 # A function to calculate the rateconstant as sum over all gridpoints
 # In addition a vector storing the cumulative rate constants is generated
-function calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
+function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
 
     # Default rate constants
+    total_grid_rate_constant, cumulative_grid_rate_constants, cumulative_points_rate_constants = rate_constant_buffers
     total_rate_constant = 0.0
-    total_grid_rate_constant = zeros(Ngrids)
-    cumulative_grid_rate_constants = zeros(Ngrids)
-    cumulative_points_rate_constants = Vector{Vector{Float64}}(undef, Ngrids)
 
     # Default events possible
     total_events_possible = 0
@@ -650,37 +648,39 @@ function calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsor
         subgrid_matrix = rsa_gridpoints[grid_id]
 
         # Defaults
-        rate_constant = 0
-        cumulative_points_rates = Vector{Float64}(undef, grids[grid_id].Npoints)
+        rate_constant = 0.0
+        cumulative_points_rates = cumulative_points_rate_constants[grid_id]
 
         # Second loop over gridpoints of this grid
         for point_id in 1:grids[grid_id].Npoints
 
+            # Get the struct of the gridpoint
+            gridpoint = subgrid_matrix[point_id]
+
             # Update rate constants
             if force_adsorption == true
-                rate_constant += subgrid_matrix[point_id].Trateconst_ads
+                rate_constant += gridpoint.Trateconst_ads
             else
-                rate_constant += subgrid_matrix[point_id].Trateconst
+                rate_constant += gridpoint.Trateconst
             end
             cumulative_points_rates[point_id] = rate_constant
             
             # Update events possible
             if force_adsorption == true
-                total_events_possible += subgrid_matrix[point_id].Nads
+                total_events_possible += gridpoint.Nads
             else
-                total_events_possible += subgrid_matrix[point_id].Nevents
+                total_events_possible += gridpoint.Nevents
             end
-            ads_events_possible += subgrid_matrix[point_id].Nads
-            dif_events_possible += subgrid_matrix[point_id].Ndif
-            rot_events_possible += subgrid_matrix[point_id].Nrot
-            con_events_possible += subgrid_matrix[point_id].Ncon
+            ads_events_possible += gridpoint.Nads
+            dif_events_possible += gridpoint.Ndif
+            rot_events_possible += gridpoint.Nrot
+            con_events_possible += gridpoint.Ncon
 
         end
 
         # Update grid rate constants
         total_rate_constant += rate_constant
         total_grid_rate_constant[grid_id] = rate_constant
-        cumulative_points_rate_constants[grid_id] = cumulative_points_rates
         cumulative_grid_rate_constants[grid_id] = total_rate_constant
         
     end
@@ -869,13 +869,13 @@ function select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, t
 end
 
 # Invoke all routines for a single rsa step
-function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, timer)
+function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, timer)
 
     # Increase the step counter
     rsa_run_results.Nsteps += 1
 
     # Create total rate constants
-    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant" calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
+    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
     #=
     println("Total rate constant: "*string(total_rate_constant))
     println("Cummulative grid rate constant: "*string(cumulative_grid_rate_constants))
@@ -887,7 +887,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     if force_adsorption == true && total_events_possible == 0
         # As an adsorption event can not be forced the rate constants are recalculated without forced adsorption
         force_adsorption = false
-        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant 2" calculate_total_rateconstant(rsa_gridpoints, Ngrids, grids, force_adsorption)
+        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
     end
 
 
@@ -951,12 +951,16 @@ function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, 
             rsa_run_results.Nevents[molecule_id, grid_id] = [0 for i in 1:4]
         end
     end
+
+    # Allocate a buffer to calculate the total rate constant (total_grid_rate_constant), total cummulative rate constant (cumulative_grid_rate_constants),
+    # and the cummilative rate constant for ever grid points (cumulative_points_rate_constants)
+    rate_constant_buffers = (zeros(Ngrids), zeros(Ngrids), [Vector{Float64}(undef, grids[grid_id].Npoints) for grid_id in 1:Ngrids])
  
     # Perform rsa steps until no adsorption is possible any more
     while true
 
         # Perform RSA step
-        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, timer)
+        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, timer)
 
         # Break conditions:
         # No further events possible
