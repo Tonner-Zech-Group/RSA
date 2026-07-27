@@ -90,6 +90,51 @@ function create_hdf5_output_file(inputfile_path)
 
 end
 
+# A function to create subgroups for a new generation
+function create_hdf5_restart_subgroups(hdf5_file, generation)
+    
+    # Check whether the file already exists
+    if ! isfile(hdf5_file)
+        println("The following HDF5 file does not exist: " * hdf5_file)
+        error("Restart Error")
+    end
+
+    # Open the file
+    hdf5_id = h5open(hdf5_file, "cw")
+
+    # Generate the subgroups for generation-X
+    level1_groups = ["inputfile-info", "preparation-info", "run-info"]   
+    for groups_id in level1_groups
+        subgroup = groups_id * "/generation-" * string(generation)
+        if haskey(hdf5_id, subgroup)
+            close(hdf5_id)
+            println("The restart target group already exists: " * subgroup)
+            error("Restart Error")
+        end
+        create_group(hdf5_id, subgroup)
+    end
+
+    # Close the file
+    close(hdf5_id)
+
+end
+
+# A function to read the number of generations currently stored in an HDF5 output file
+function read_hdf5_number_of_generations(hdf5_file)
+    hdf5_id = h5open(hdf5_file, "r")
+        generation = parse(Int64, read_attribute(hdf5_id, "generations"))
+    close(hdf5_id)
+    return generation
+end
+
+# A function to change the number of generations currently stored in an HDF5 output file
+function reset_hdf5_number_of_generations(hdf5_file, generation)
+    hdf5_id = h5open(hdf5_file, "cw")
+        delete_attribute(hdf5_id, "generations")
+        attributes(hdf5_id)["generations"] = string(generation)
+    close(hdf5_id)
+end
+
 # A function to write input file information to an hdf5 file
 function write_hdf5_input_information(hdf5_file, generation, Nmolecules, molecules, Ngrids, grids, lattice, events)
 
