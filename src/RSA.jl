@@ -32,6 +32,7 @@ using TimerOutputs: NoTimerOutput
 include("constants.jl")
 include("math.jl")
 include("io.jl")
+include("hdf5.jl")
 include("pbc.jl")
 include("analysis_plotting.jl")
 include("init.jl")
@@ -1041,7 +1042,7 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     @timeit timer "Initialization" begin
 
     # Currently there are no restart features
-    Nrun = 1
+    generation = 1
 
     # Input read input files
     Nmolecules, molecules, Ngrids, grids, lattice, events = read_input(inputfile_path)
@@ -1049,7 +1050,7 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # Create HDF5 output file
     if hdf5 == true
         hdf5_file = create_hdf5_output_file(inputfile_path)
-        write_hdf5_input_information(hdf5_file, Nrun, Nmolecules, molecules, Ngrids, grids, lattice, events)
+        write_hdf5_input_information(hdf5_file, generation, Nmolecules, molecules, Ngrids, grids, lattice, events)
     end
 
     # Generate all relevant matrices
@@ -1057,7 +1058,7 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     
     # Add to the HDF5 file
     if hdf5 == true
-        write_preparation_information(hdf5_file, Nrun, Ngrids, grids, lattice, Nmolecules, molecules, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list)
+        write_preparation_information(hdf5_file, generation, Ngrids, grids, lattice, Nmolecules, molecules, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list)
     end
 
     # For debugging:
@@ -1100,7 +1101,7 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
 
     # Add results to HDF5 file
     if hdf5 == true
-        write_rsa_results(hdf5_file, Nrun, NRuns, rsa_results)
+        write_rsa_results(hdf5_file, generation, NRuns, rsa_results)
         #println("All information are stored in the following HDF5 file:")
         #println(hdf5_file)
     end

@@ -226,6 +226,10 @@ end
 
     @test events2.Nadsorptions == events.Nadsorptions
     @test events2.Nconformers == events.Nconformers
+    @test events2.restart_flag == events.restart_flag
+    @test events2.restart_generation == events.restart_generation
+    @test events2.restart_runs == events.restart_runs
+    @test events2.restart_file == events.restart_file
 
     # Clean up the file this test created
     rm(hdf5_path, force=true)
