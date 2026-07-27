@@ -195,6 +195,6 @@ end
     @test rsa_results[1].status[:,185] == [1, 1, 2844, 4]
     @test rsa_results[1].randomseed[1] ≈ 0.8911575406016274
     @test rsa_results[1].randomseed[steps - 1] ≈ 0.8334743116905989
-    @test rsa_results[1].stepinfo[:,1] == [56544, 56544, 0, 0, 0, 1, 3150, 1, 1, 0, 3, 0]
+    @test rsa_results[1].stepinfo[:,1] == [21204, 21204, 0, 0, 0, 1, 3150, 1, 1, 0, 3, 0]
     @test rsa_results[1].stepinfo[:,steps - 1] == [286, 0, 0, 281, 5, 2, 2005, 2, 3, 2, 1929, 1]
 end

@@ -198,7 +198,15 @@ function grid_level_initials(grid_id, Ngrids, Nmolecules, molecules, rate_consta
     Trateconst_ads = Cumulative_rate_molecules_ads[Nmolecules]
 
     # Generate Nevents
-    Nads = sum(Nfree_rotation)
+
+    # Count the number of adsorbates that can adsorb
+    # Check with the rate constants as Nfree_rotation is also created for adsorbates, which only diffuse to this point
+    Nads = 0
+    for molecule_id in 1:Nmolecules
+        if rate_constants_info.ads[molecule_id, grid_id] >= 0
+            Nads += Nfree_rotation[molecule_id]
+        end
+    end
     Nevents = Nads
     Ndif = 0
     Nrot = 0
