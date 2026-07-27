@@ -19,7 +19,7 @@
 
 # van der Waals Radii taken from https://pubchem.ncbi.nlm.nih.gov/ptable/atomic-radius/
 # Atomic number   --   Symbol   --   Radius in A
-atomic_information = [1 "H" 1.20;
+const atomic_information = [1 "H" 1.20;
 2	"He" 	1.40; 
 3	"Li"	1.82;
 4	"Be"	1.53;

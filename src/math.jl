@@ -314,15 +314,17 @@ function present_column(matrix::Matrix{Int64}, column::Vector{Int64}, subset::Un
 end
 
 # A function to fill a prealocated matrix. The matrix is automatically extended if necessary.
-function fill_preallocated_status_matrix!(current_size, stepsize, matrix, step, value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, value11, value12)
+function fill_preallocated_status_matrix(current_size, matrix, step, value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, value11, value12)
+    # Increase the size of the matrix if necessary
     if step > current_size
-        matrix_extension = Matrix{Int64}(undef, 12, stepsize)
+        new_size = max(2 * current_size, 1024)
+        matrix_extension = Matrix{Int64}(undef, 12, new_size - current_size)
         matrix = hcat(matrix, matrix_extension)
-        current_size += stepsize
-        matrix[:, step] .= value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, value11, value12
-    else
-        matrix[:, step] .= value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, value11, value12
+        current_size = new_size
     end
+
+    # Add the new values to the matrix
+    matrix[:, step] .= value1, value2, value3, value4, value5, value6, value7, value8, value9, value10, value11, value12
 
     # Return changed values
     return matrix, current_size

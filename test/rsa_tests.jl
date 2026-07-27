@@ -4,6 +4,10 @@
 # Run each tutorial once and check that the results are consistent with previous runs
 #
 
+using Test
+using Random
+using RSA
+
 # Switch in the tutorials directory
 tutorial_path = joinpath(@__DIR__,"..","tutorials")
 cd(tutorial_path)
