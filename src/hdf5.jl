@@ -1168,9 +1168,9 @@ end
 
 """
 
-    read_hdf5_output_file(hdf5_file::String)
+    read_hdf5_output_file(hdf5_file::String, generation::Int64)
 
-Reads and returns all information of RSA simulations from a HDF5 file found under the given path `hdf5_file`.
+Reads and returns all information of RSA simulations within a generation from a HDF5 file found under the given path `hdf5_file`.
 
 # Return values
 Returns input information and results as structs in the follwing order:
