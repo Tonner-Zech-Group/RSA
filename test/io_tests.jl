@@ -16,6 +16,7 @@ cd(tutorial_path)
 @testset "Tutorial 01-Adsorption-Stochastics IO" begin
     inputfile_path = "./01-Adsorption-Stochastics/input.inp"
     Nmolecules, molecules, Ngrids, grids, lattice, events = RSA.read_input(inputfile_path)
+    RSA.check_eventlist!(molecules, grids, events) # Necessary to set molecules[1].grids 
 
     # Molecule input
     @test Nmolecules == 1
@@ -87,6 +88,7 @@ end
 @testset "Tutorial 03-Multiple-Adsorbates IO" begin
     inputfile_path = "./03-Multiple-Adsorbates/input.inp"
     Nmolecules, molecules, Ngrids, grids, lattice, events = RSA.read_input(inputfile_path)
+    RSA.check_eventlist!(molecules, grids, events) # Necessary to set molecules[2].grids
 
     # Only new molecule is checked
     @test Nmolecules == 2
@@ -194,8 +196,9 @@ end
 
     @test isfile(hdf5_path)
 
+    generation = 1
     rsa_results2, Nmolecules2, molecules2, Ngrids2, grids2, lattice2, events2 =
-        read_hdf5_output_file(hdf5_path)
+        read_hdf5_output_file(hdf5_path, generation)
 
     # Both sets must be identical
     @test Nmolecules2 == Nmolecules

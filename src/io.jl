@@ -243,29 +243,7 @@ function read_input(path::String)
     Nmolecules, molecules, Ngrids, grids, lattice, events = read_input_file(path)
 
     # Control that the dimensions of the lattice, grid, molecule, and overlap match
-    if events.overlap3d
-        if !isempty(findall(x->x!=3, lattice.dimension))
-            println("The dimension of the lattice should be 3. (3 lattice vectors with 3 coordinates)")
-            error("Input File Error")
-        end
-        if !isempty(findall(x->x!=3, getproperty.(grids, :dimension)))
-            println("The dimension of the grids should be 3. (3 coordinates per gridpoint)")
-            error("Input File Error")
-        end
-        if !isempty(findall(x->x!=3, getproperty.(molecules, :dimension)))
-            println("The dimension of the molecules should be 3. (3 coordinates per atom)")
-            error("Input File Error")
-        end
-    elseif events.overlap2d
-        if !isempty(findall(x->x!=lattice.dimension, getproperty.(grids, :dimension)))
-            println("The dimension of the lattice and grids do not match. Both need the same number of coordinates per lattice vector and gridpoint.")
-            error("Input File Error")
-        end
-        if !isempty(findall(x->x!=lattice.dimension, getproperty.(molecules, :dimension)))
-            println("The dimension of the lattice and molecules do not match. Both need the same number of coordinates per lattice vector and atom.")
-            error("Input File Error")
-        end
-    end
+    check_input_file_dimension_values(molecules, grids, lattice, events)
 
     # Use the translations to generate all gridpoints for every grid
     for grid_id in 1:Ngrids
@@ -300,6 +278,48 @@ function read_input(path::String)
 
     # Use the molecule and grid labels to correct the eventlist
     # The eventlist is using the molecules and grids in the same order as the corresponding vector
+    check_and_change_input_labels!(Nmolecules, molecules, Ngrids, grids, events)
+    
+    # Check that one convergence criterium is selected
+    if events.break_steps == false && events.break_convergence == false
+        println("No convergence criterium selected!")
+        println("Use either 'Steps' or 'Coverageconvergence' to define an endpoint for this simulation.")
+        error("Input Conversion Error")
+    end
+
+    # Return everything
+    return Nmolecules, molecules, Ngrids, grids, lattice, events
+end
+
+# A function to control the dimension of the input values
+function check_input_file_dimension_values(molecules, grids, lattice, events)
+    if events.overlap3d
+        if !isempty(findall(x->x!=3, lattice.dimension))
+            println("The dimension of the lattice should be 3. (3 lattice vectors with 3 coordinates)")
+            error("Input File Error")
+        end
+        if !isempty(findall(x->x!=3, getproperty.(grids, :dimension)))
+            println("The dimension of the grids should be 3. (3 coordinates per gridpoint)")
+            error("Input File Error")
+        end
+        if !isempty(findall(x->x!=3, getproperty.(molecules, :dimension)))
+            println("The dimension of the molecules should be 3. (3 coordinates per atom)")
+            error("Input File Error")
+        end
+    elseif events.overlap2d
+        if !isempty(findall(x->x!=lattice.dimension, getproperty.(grids, :dimension)))
+            println("The dimension of the lattice and grids do not match. Both need the same number of coordinates per lattice vector and gridpoint.")
+            error("Input File Error")
+        end
+        if !isempty(findall(x->x!=lattice.dimension, getproperty.(molecules, :dimension)))
+            println("The dimension of the lattice and molecules do not match. Both need the same number of coordinates per lattice vector and atom.")
+            error("Input File Error")
+        end
+    end
+end
+
+# A function to relabel the events based on the molecule and grid labels
+function check_and_change_input_labels!(Nmolecules, molecules, Ngrids, grids, events)
     for event_id in 1:events.Nadsorptions
         # Get the label of the current molecule
         tmp_molec_label = events.adsorptions[event_id].molecule
@@ -347,20 +367,15 @@ function read_input(path::String)
         new_grid_label = find_label(Ngrids, grids, tmp_grid_label)
         events.conformers[event_id].grid = new_grid_label
     end
+end
 
-    # Check that one convergence criterium is selected
-    if events.break_steps == false && events.break_convergence == false
-        println("No convergence criterium selected!")
-        println("Use either 'Steps' or 'Coverageconvergence' to define an endpoint for this simulation.")
-        error("Input Conversion Error")
-    end
-
-    # Check that the event list is meaningful
+# A function to check that the eventlist is meaningfull
+function check_eventlist!(molecules, grids, events)
     # Check 1: On which gridtype can a molecule adsorb
     for adsorption_id in 1:events.Nadsorptions
         molecule_id = events.adsorptions[adsorption_id].molecule
         grid_id = events.adsorptions[adsorption_id].grid
-        if ! any(value -> value == grid_id, molecules[molecule_id].grids)
+        if grid_id ∉ molecules[molecule_id].grids
             push!(molecules[molecule_id].grids, grid_id) 
         end
     end
@@ -372,8 +387,8 @@ function read_input(path::String)
         grid_id = events.conformers[conformer_id].grid
 
         # check whether this event is meaningful
-        if any(value -> value == grid_id, molecules[molecule_start_id].grids)
-            if ! any(value -> value == grid_id, molecules[molecule_end_id].grids)
+        if grid_id ∈ molecules[molecule_start_id].grids
+            if grid_id ∉ molecules[molecule_end_id].grids
                 push!(molecules[molecule_end_id].grids, grid_id)
             end 
         else
@@ -393,8 +408,8 @@ function read_input(path::String)
         grid_end_id = events.diffusions[diffusion_id].grid_end
 
         # check whether this event is meaningful
-        if any(value -> value == grid_start_id, molecules[molecule_id].grids)
-            if ! any(value -> value == grid_end_id, molecules[molecule_id].grids)
+        if grid_start_id ∈ molecules[molecule_id].grids
+            if grid_end_id ∉ molecules[molecule_id].grids
                 push!(molecules[molecule_id].grids, grid_end_id)
             end 
         else
@@ -411,7 +426,7 @@ function read_input(path::String)
     for rotation_id in 1:events.Nrotations
         molecule_id = events.rotations[rotation_id].molecule
         grid_id = events.rotations[rotation_id].grid
-        if ! any(value -> value == grid_id, molecules[molecule_id].grids)
+        if grid_id ∉ molecules[molecule_id].grids
             println("I have problems reading events defined in the eventlist.")
             println("A molecule should not be able to rotate on a grid type it can never reach.")
             println("Problematic case: " * string(molecules[molecule_id].label) * " rot " * string(grids[grid_id].label))
@@ -419,8 +434,8 @@ function read_input(path::String)
         end
     end
 
-    # Return everything
-    return Nmolecules, molecules, Ngrids, grids, lattice, events
+    # Return nothing
+    return
 end
 
 # A function to find a label in the known molecules or grids

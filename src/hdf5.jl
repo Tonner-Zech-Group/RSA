@@ -1082,6 +1082,7 @@ function write_hdf5_rsa_run(hdf5_file, generation, run_id, rsa_result)
     group_id["stepinfo"] = rsa_result.stepinfo
     group_id["Nevents"] = tmp_Nevents
     group_id["size"] = rsa_result.size
+    group_id["seed_offset"] = rsa_result.seed_offset
 
     # Close the file
     close(hdf5_id)
@@ -1144,6 +1145,7 @@ function read_hdf5_rsa_run(hdf5_file, generation, run_id, Nmolecules, Ngrids)
     rsa_result.stepinfo = read(group_id, "stepinfo")
     tmp_Nevents = read(group_id, "Nevents")
     rsa_result.size = read(group_id, "size")
+    rsa_result.seed_offset = read(group_id, "seed_offset")
 
     # Transform tmp_Nevents
     rsa_result.Nevents = Matrix{Vector{Int64}}(undef, Nmolecules, Ngrids)
@@ -1180,16 +1182,13 @@ Returns input information and results as structs in the follwing order:
 - `lattice`: A lattice_struct containing all information of the used lattice.
 - `events`: A events_struct containing all information of the events and general RSA settings.
 """
-function read_hdf5_output_file(hdf5_file)
+function read_hdf5_output_file(hdf5_file, generation)
 
     # Check whether the file already exists
     if ! isfile(hdf5_file)
         println("The following HDF5 file does not exist: " * outputfile_path)
         error("Output File Error")
     end
-
-    # Currently no restart features are implemented
-    generation = 1
 
     # Read input information
     Nmolecules, molecules, Ngrids, grids, lattice, events = read_hdf5_input_information(hdf5_file, generation)
