@@ -75,7 +75,7 @@ function get_smallest_vdW_distance_to_point(molecule_elements, molecule_coords, 
 
     # Correct for periodic boundary conditions
     if pbc == true
-        distance_vectors = apply_pbc_to_coordinates(distance_vectors, lattice.transvectors, lattice.inversevectors)
+        distance_vectors = apply_pbc_to_coordinates(distance_vectors, lattice.transcellvectors, lattice.inversecellvectors)
     end
 
     # Calculate the distances
@@ -150,7 +150,7 @@ function point_covered_by_vdW_radii_2D(molecule_elements, molecule_coords, point
     for ele in axes(molecule_coords, 2)
         
         distance_vector = molecule_coords[:,ele] - point
-        distance_vector = apply_pbc_to_coordinates(distance_vector, lattice.transvectors, lattice.inversevectors)
+        distance_vector = apply_pbc_to_coordinates(distance_vector, lattice.transcellvectors, lattice.inversecellvectors)
         distance = norm(distance_vector[1:dim])
 
         if distance < atomic_information[molecule_elements[ele], 3]

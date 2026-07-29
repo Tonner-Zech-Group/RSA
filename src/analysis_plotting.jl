@@ -82,8 +82,8 @@ Create an image of the surface covered by adsorbates.
 function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true)
 
     # Define the image resolution
-    x_axis_size = lattice.transvectors[1,1] + lattice.transvectors[2,1]
-    y_axis_size = lattice.transvectors[1,2] + lattice.transvectors[2,2]
+    x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
+    y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
     x_axis_resolution = x_axis_size * pixel_per_angstrom
     y_axis_resolution = y_axis_size * pixel_per_angstrom
     
@@ -128,63 +128,63 @@ function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pix
         transy += 1
         if transx ≤ boundary_cells
             if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[1,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[1,:] + lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1] + lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[1,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[1,:] - lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1] - lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             else
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[1,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             end
         elseif (lattice.Ncellx - boundary_cells) < transx
             if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[1,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[1,:] + lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1] + lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id]) 
             elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[1,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[1,:] - lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1] - lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             else
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[1,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             end
         else
             if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords + lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords - lattice.transvectors[2,:]
+                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
                 displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
                 scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
             end
@@ -639,7 +639,7 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
     molecules_area = calculate_surface_area_molecules(Nmolecules, molecules)
 
     # Calculate the surface area
-    surface_area = norm(cross(lattice.transvectors[1,:], lattice.transvectors[2,:]))
+    surface_area = norm(cross(lattice.transcellvectors[:,1], lattice.transcellvectors[:,2]))
 
     # Generate the covered area per molecule per run (in %)
     adsorbate_area_per_run = Matrix{Float64}(undef, Nmolecules, Nruns)
@@ -751,7 +751,7 @@ function create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, latt
                 distance_vectors =  grids[grid_B_id].points .- upoint
 
                 # Correct for PBC
-                corrected_distance_vectors = apply_pbc_to_coordinates(distance_vectors, lattice.transvectors, lattice.inversevectors)
+                corrected_distance_vectors = apply_pbc_to_coordinates(distance_vectors, lattice.transcellvectors, lattice.inversecellvectors)
 
                 # Get the distances
                 distances = vec(sqrt.(sum(abs2, corrected_distance_vectors, dims = 1)))
@@ -863,8 +863,8 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
         end
     else
         # Define the image resolution
-        x_axis_size = lattice.transvectors[1,1] + lattice.transvectors[2,1]
-        y_axis_size = lattice.transvectors[1,2] + lattice.transvectors[2,2]
+        x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
+        y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
         x_axis_resolution = x_axis_size * pixel_per_angstrom
         y_axis_resolution = y_axis_size * pixel_per_angstrom
     

@@ -122,7 +122,7 @@ end
 Mutable struct to store all information concerning the lattice.
 
 # Structural fields
-- `vectors`: Vector spanning the unit cell.
+- `cellvectors`: Vectors spanning the unit cell. One vector per column.
 - `dimension`: Dimension of the vectors.
 
 # Translation fields
@@ -130,12 +130,12 @@ Mutable struct to store all information concerning the lattice.
 - `transy`: Number of translations along the second vector.
 - `Ncellx`: Total number of cells along the first vector (is equal to transx + 1).
 - `Ncelly`: Total number of cells along the second vector (is equal to transy + 1).
-- `transvectors`: Lattice vectors of the supercell.
-- `inversevectors`: Inverse lattice vectors of the supercell.
+- `transcellvectors`: Lattice vectors of the supercell.
+- `inversecellvectors`: Inverse lattice vectors of the supercell.
 """
 @kwdef mutable struct lattice_struct
     # General information
-    vectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
+    cellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
     dimension::Int64 = 3
 
     # Translations
@@ -143,8 +143,8 @@ Mutable struct to store all information concerning the lattice.
     transy::Int64 = 0
     Ncellx::Int64 = 1
     Ncelly::Int64 = 1
-    transvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
-    inversevectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
+    transcellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
+    inversecellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
 end
 @kwdef mutable struct event_diffusion_struct
     molecule::Int64 = 1
@@ -249,7 +249,7 @@ function read_input(path::String)
     for grid_id in 1:Ngrids
         # Get all points
         grids[grid_id].points, grids[grid_id].Npoints, grids[grid_id].mapping = 
-                    replicate_gridpoints_with_translation(lattice.vectors, grids[grid_id].uniquepoints, lattice.transx, lattice.transy)
+                    replicate_gridpoints_with_translation(lattice.cellvectors, grids[grid_id].uniquepoints, lattice.transx, lattice.transy)
     end
 
     # For every molecule
@@ -896,7 +896,7 @@ function read_lattice_block(io_id, lattice_blockkeywords, lattice_keywords)
             endcounter -= 1
             if endcounter == 0
                 # Generate the full lattice based on the translations
-                lattice.transvectors, lattice.inversevectors = replicate_lattice_with_translation(lattice.vectors, lattice.transx, lattice.transy)
+                lattice.transcellvectors, lattice.inversecellvectors = replicate_lattice_with_translation(lattice.cellvectors, lattice.transx, lattice.transy)
 
                 # Leave the while loop
                 break
@@ -917,24 +917,27 @@ function read_lattice_block(io_id, lattice_blockkeywords, lattice_keywords)
                 line = strip(readline(io_id))
                 string_inputvector = split(line)
                 lattice.dimension = size(string_inputvector,1)
-                lattice.vectors = reshape(parse.(Float64, string_inputvector), 1, lattice.dimension)
+                lattice.cellvectors = reshape(parse.(Float64, string_inputvector), 1, lattice.dimension)
                 
                 # Every other line
                 line = strip(readline(io_id))
                 while line != "end" && line != "End" && line != "END"
                     string_inputvector = split(line)
-                    lattice.vectors = vcat(lattice.vectors, reshape(parse.(Float64, string_inputvector), 1, lattice.dimension))
+                    lattice.cellvectors = vcat(lattice.cellvectors, reshape(parse.(Float64, string_inputvector), 1, lattice.dimension))
                     line = strip(readline(io_id))
                 end
 
-                # Check that the dimension of the lattice
-                if lattice.dimension != size(lattice.vectors, 1)
+                # Check the dimension of the lattice
+                if lattice.dimension != size(lattice.cellvectors, 1)
                     println("The dimension of the lattice and the number of specified coordinates per lattice vector do not match.")
                     println("The defined matrix is not a square matrix.")
                     println("Dimension: " * string(lattice.dimension))
-                    println("Coordinates: " * string(size(lattice.vectors, 1)))
+                    println("Coordinates: " * string(size(lattice.cellvectors, 1)))
                     error("Input File Error")
                 end
+
+                # Convert the lattice vectors from row to column vectors
+                lattice.cellvectors = permutedims(lattice.cellvectors)
 
                 # Reset reading
                 continue

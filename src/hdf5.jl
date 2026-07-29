@@ -181,13 +181,13 @@ function write_hdf5_lattice(lattice, group_id)
 
     # Write the information
     lattice_id["dimension"] = lattice.dimension
-    lattice_id["vectors"] = lattice.vectors
+    lattice_id["vectors"] = lattice.cellvectors
     lattice_id["transx"] = lattice.transx
     lattice_id["transy"] = lattice.transy
     lattice_id["Ncellx"] = lattice.Ncellx
     lattice_id["Ncelly"] = lattice.Ncelly
-    lattice_id["transvectors"] = lattice.transvectors
-    lattice_id["inversevectors"] = lattice.inversevectors
+    lattice_id["transvectors"] = lattice.transcellvectors
+    lattice_id["inversevectors"] = lattice.inversecellvectors
 
 end
 
@@ -203,13 +203,13 @@ function read_hdf5_lattice(group_id)
 
     # Read the information
     lattice.dimension = read(lattice_id, "dimension")
-    lattice.vectors = read(lattice_id, "vectors")
+    lattice.cellvectors = read(lattice_id, "vectors")
     lattice.transx = read(lattice_id, "transx")
     lattice.transy = read(lattice_id, "transy")
     lattice.Ncellx = read(lattice_id, "Ncellx") 
     lattice.Ncelly = read(lattice_id, "Ncelly")
-    lattice.transvectors = read(lattice_id, "transvectors")
-    lattice.inversevectors = read(lattice_id, "inversevectors")
+    lattice.transcellvectors = read(lattice_id, "transvectors")
+    lattice.inversecellvectors = read(lattice_id, "inversevectors")
 
     # Return results
     return lattice
