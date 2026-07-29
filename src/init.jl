@@ -526,7 +526,7 @@ function check_for_atom_overlap(points_difference_vector, points_difference, mol
 
             # Calculate the difference between the atoms (vector in fractional coordinates)
             fractional_distance_vector = points_difference_vector + rotation_difference_matrix[atom_1_id,atom_2_id]
-            cartesian_distance_vector = apply_pbc_to_fractional_coordinates(fractional_distance_vector, lattice.transvectors)
+            cartesian_distance_vector = apply_pbc_to_fractional_coordinates(fractional_distance_vector, lattice.transcellvectors)
             # Only consider the distance in plane for RSA
             if overlap_2d
                 atoms_distance = norm(cartesian_distance_vector[1:2])
@@ -610,7 +610,7 @@ function calculate_unit_cell_gridpoints_difference_vectors(Ngrids, grids, lattic
                 # The final matrix is anti-symmetric - so only calculate half its values
                 Threads.@threads for column_id in 1:grids[grid_A_id].Nuniquepoints
                     for row_id in column_id + 1:grids[grid_A_id].Nuniquepoints
-                        gridpoints_difference_matrix[row_id, column_id] = lattice.inversevectors * (grids[grid_A_id].uniquepoints[:, column_id] - grids[grid_A_id].uniquepoints[:, row_id])
+                        gridpoints_difference_matrix[row_id, column_id] = lattice.inversecellvectors * (grids[grid_A_id].uniquepoints[:, column_id] - grids[grid_A_id].uniquepoints[:, row_id])
                         gridpoints_difference_matrix[column_id, row_id] = -gridpoints_difference_matrix[row_id, column_id]
                     end
                 end
@@ -624,7 +624,7 @@ function calculate_unit_cell_gridpoints_difference_vectors(Ngrids, grids, lattic
                 # The final matrix is not symmetric - so calculate all its values
                 Threads.@threads for column_id in 1:grids[grid_B_id].Nuniquepoints
                     for row_id in 1:grids[grid_A_id].Nuniquepoints
-                        gridpoints_difference_matrix[row_id, column_id] = lattice.inversevectors * (grids[grid_B_id].uniquepoints[:, column_id] - grids[grid_A_id].uniquepoints[:, row_id])
+                        gridpoints_difference_matrix[row_id, column_id] = lattice.inversecellvectors * (grids[grid_B_id].uniquepoints[:, column_id] - grids[grid_A_id].uniquepoints[:, row_id])
                     end
                 end
 
@@ -654,13 +654,13 @@ function calculate_translation_distance_vectors(lattice)
     
     # Default
     translation_distance_vectors = Matrix{Vector{Float64}}(undef, lattice.transx + 1, lattice.transy + 1)
-    lattice_x = lattice.vectors[1,1:3]
-    lattice_y = lattice.vectors[2,1:3]
+    lattice_x = lattice.cellvectors[1:3,1]
+    lattice_y = lattice.cellvectors[1:3,2]
 
     # The matrix is not symmetric or anti-symmetric
     Threads.@threads for column_id in 1:lattice.transy + 1
         for row_id in 1:lattice.transx + 1
-            translation_distance_vectors[row_id, column_id] = lattice.inversevectors * ((row_id - 1) * lattice_x + (column_id - 1) * lattice_y)
+            translation_distance_vectors[row_id, column_id] = lattice.inversecellvectors * ((row_id - 1) * lattice_x + (column_id - 1) * lattice_y)
         end
     end
 
@@ -707,9 +707,9 @@ function calculate_rotation_difference_matrices(Nmolecules, molecules, lattice)
                                 for atom_B_id in atom_A_id:molecules[molecule_B_id].Natoms
                     
                                     if atom_A_id == atom_B_id
-                                        tmp_matrix[atom_B_id, atom_A_id] = lattice.inversevectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
+                                        tmp_matrix[atom_B_id, atom_A_id] = lattice.inversecellvectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
                                     else
-                                        tmp_matrix[atom_B_id, atom_A_id] = lattice.inversevectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
+                                        tmp_matrix[atom_B_id, atom_A_id] = lattice.inversecellvectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
                                         tmp_matrix[atom_A_id,atom_B_id] = -tmp_matrix[atom_B_id, atom_A_id]
                                     end
 
@@ -718,7 +718,7 @@ function calculate_rotation_difference_matrices(Nmolecules, molecules, lattice)
                         else
                             for atom_A_id in 1:molecules[molecule_A_id].Natoms
                                 for atom_B_id in 1:molecules[molecule_B_id].Natoms
-                                    tmp_matrix[atom_B_id, atom_A_id] = lattice.inversevectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
+                                    tmp_matrix[atom_B_id, atom_A_id] = lattice.inversecellvectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
                                 end
                             end
                         end
@@ -752,7 +752,7 @@ function calculate_rotation_difference_matrices(Nmolecules, molecules, lattice)
                         # This matrix is non-symmetric
                         for atom_A_id in 1:molecules[molecule_A_id].Natoms
                             for atom_B_id in 1:molecules[molecule_B_id].Natoms
-                                tmp_matrix[atom_B_id, atom_A_id] = lattice.inversevectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
+                                tmp_matrix[atom_B_id, atom_A_id] = lattice.inversecellvectors * (structure_2[:,atom_A_id] - structure_1[:,atom_B_id])
                             end
                         end
 
@@ -876,7 +876,7 @@ function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids,
                                 mapping = grids[Tgrid_id].mapping[:,Tpoint_id]
                                 fractional_points_difference_vector = unit_cell_gridpoints_difference[grid_id,Tgrid_id][point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                                cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transvectors)
+                                cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
 
                                 if overlap_2d
                                     points_difference = norm(cartesian_points_difference_vector[1:2])
@@ -1030,7 +1030,7 @@ function create_neighbour_list(Nmolecules, Ngrids, rate_constants_info, lattice,
                         mapping = grids[end_grid_id].mapping[:,end_point_id]
                         fractional_points_difference_vector = unit_cell_gridpoints_difference[start_grid_id,end_grid_id][start_point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                        cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transvectors)
+                        cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
 
                         if overlap_2d
                             distance = norm(cartesian_points_difference_vector[1:2])
@@ -1187,7 +1187,7 @@ function validate_restart_compatibility(Nmolecules, molecules, Ngrids, grids, la
         check_passed = false
         push!(error_message, "lattice translations (transx/transy) differ")
     end
-    if size(lattice.vectors) != size(origin_lattice.vectors) || ! isapprox(lattice.vectors, origin_lattice.vectors)
+    if size(lattice.cellvectors) != size(origin_lattice.cellvectors) || ! isapprox(lattice.cellvectors, origin_lattice.cellvectors)
         check_passed = false
         push!(error_message, "lattice vectors differ")
     end

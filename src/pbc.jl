@@ -25,8 +25,8 @@ function replicate_lattice_with_translation(lattice, transx, transy)
     
     # Replicate
     fulllattice = copy(lattice)
-    fulllattice[1,:] *= transx + 1
-    fulllattice[2,:] *= transy + 1
+    fulllattice[:,1] *= transx + 1
+    fulllattice[:,2] *= transy + 1
     
     # Get inverse lattice
     invfulllattice = inv(fulllattice)
@@ -49,7 +49,7 @@ function replicate_gridpoints_with_translation(lattice, gridpoints, transx, tran
             # Store in temp matrix
             tmp_matrix = copy(gridpoints)
             for point in axes(tmp_matrix, 2)
-                tmp_matrix[:,point] += i * lattice[1,:] + j * lattice[2,:]
+                tmp_matrix[:,point] += i * lattice[:,1] + j * lattice[:,2]
             end
 
             #println(tmp_matrix)

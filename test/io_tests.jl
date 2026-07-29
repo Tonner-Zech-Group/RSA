@@ -57,16 +57,16 @@ cd(tutorial_path)
     @test grids[1].mapping[:,end] == [2, 30, 18]
 
     # Lattice input
-    @test lattice.vectors ≈ [2.51883 0.0 0.0; 0.0 4.36274 0.0; 0.0 0.0 1.0]
+    @test lattice.cellvectors ≈ [2.51883 0.0 0.0; 0.0 4.36274 0.0; 0.0 0.0 1.0]
     @test lattice.dimension == 3
     @test lattice.transx == 30
     @test lattice.transy == 18
     @test lattice.Ncellx == 31
     @test lattice.Ncelly == 19
-    @test size(lattice.transvectors) == (3, 3)
-    @test lattice.transvectors[:,1] ≈ [78.08373, 0.0, 0.0]
-    @test size(lattice.inversevectors) == (3, 3)
-    @test lattice.inversevectors[:,1] ≈ [0.012806765250584213, 0.0, 0.0]
+    @test size(lattice.transcellvectors) == (3, 3)
+    @test lattice.transcellvectors[:,1] ≈ [78.08373, 0.0, 0.0]
+    @test size(lattice.inversecellvectors) == (3, 3)
+    @test lattice.inversecellvectors[:,1] ≈ [0.012806765250584213, 0.0, 0.0]
 
     # Events input
     @test events.steps == 1000
@@ -225,7 +225,7 @@ end
 
     @test lattice2.transx == lattice.transx
     @test lattice2.transy == lattice.transy
-    @test lattice2.vectors == lattice.vectors
+    @test lattice2.cellvectors == lattice.cellvectors
 
     @test events2.Nadsorptions == events.Nadsorptions
     @test events2.Nconformers == events.Nconformers
