@@ -1,0 +1,62 @@
+# Adsorption on Cu(111)
+
+Molecule
+    rotationmodus = angle
+    rotationangle = 60.0
+    fixpointtype = atoms
+    fixpointatoms = 1
+    structure = ./10-Restarting/aniline.xyz
+End
+
+Molecule
+    rotationmodus = angle
+    rotationangle = 60.0
+    fixpointtype = atoms
+    fixpointatoms = 1
+    structure = ./10-Restarting/pyridine-upright.xyz
+End
+
+# Lattice of the Cu(111) surface
+Lattice
+    transx = 30
+    transy = 18
+    
+    vectors
+        2.51883   0.00000   0.00000
+        0.00000   4.36274   0.00000
+        0.00000   0.00000   1.00000
+    end
+End
+
+# On-top grid points of the Cu(111) surface
+Grid
+    points
+        0.00000   0.00000   0.00000
+        1.25942   2.18137   0.00000
+    end
+End
+
+# Hollow grid points of the Cu(111) surface
+Grid
+    points
+        0.00000   1.45518   0.00000
+        0.00000   2.90908   0.00000
+        1.25942   0.72771   0.00000
+        1.25942   3.63655   0.00000  
+    end
+End
+
+# General settings for adsorption of aniline & pyrrole 
+Events
+    steps = 1000
+    
+    restart = 1
+    restartruns = 1
+    restartfile = ./10-Restarting/input-1.h5
+
+    eventlist
+	    2 ads 1 1.0
+        1 dif 1 1 10.0 2.6
+        1 rot 1 10.0
+    end
+End

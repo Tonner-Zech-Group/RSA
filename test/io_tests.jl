@@ -182,7 +182,7 @@ end
     @test events.conformers[1].molecule_start == 1 && events.conformers[1].molecule_end == 2 && events.conformers[1].grid == 1 && events.conformers[1].weigth == 5.0
 end
 
-@testset "Tutorial 09-HDF5 HDF5 write and read test" begin
+@testset "Tutorial 09-HDF5 IO HDF5" begin
     Random.seed!(2024)
     inputfile_path = "./09-HDF5/input.inp"
     hdf5_path = "./09-HDF5/input.h5"

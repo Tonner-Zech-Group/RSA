@@ -198,3 +198,38 @@ end
     @test rsa_results[1].stepinfo[:,1] == [21204, 21204, 0, 0, 0, 1, 3150, 1, 1, 0, 3, 0]
     @test rsa_results[1].stepinfo[:,steps - 1] == [286, 0, 0, 281, 5, 2, 2005, 2, 3, 2, 1929, 1]
 end
+
+@testset "Tutorial 10-Restarting" begin
+    
+    # Needed settings
+    inputfile_path_1 = "./10-Restarting/input-1.inp"
+    inputfile_path_2 = "./10-Restarting/input-2.inp"
+    hdf5_path = "./10-Restarting/input-1.h5"
+
+    # Delete hdf5 file if present
+    isfile(hdf5_path) && rm(hdf5_path)
+
+    # Run the first and second simulation
+    NRuns = 1
+    Random.seed!(2024)
+    rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events = perform_multiple_rsa_runs(NRuns, inputfile_path_1; hdf5=true);
+
+    NRuns = 1
+    Random.seed!(2024)
+    rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events = perform_multiple_rsa_runs(NRuns, inputfile_path_2; hdf5=true);
+
+    # The tests
+    steps = rsa_results[1].Nsteps
+    @test rsa_results[1].Nsteps == 1030
+    @test rsa_results[1].Nevents == reshape([[30, 570, 311, 0],  [119, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], 2, 2)
+    @test rsa_results[1].status[:,1] == [1, 1, 1050, 2]
+    @test rsa_results[1].status[:,149] == [2, 1, 84, 4]
+    @test rsa_results[1].randomseed[1] ≈ 0.8911575406016274
+    @test rsa_results[1].randomseed[1000] ≈ 0.882354088637729
+    @test rsa_results[1].stepinfo[:,1] == [0, 0, 0, 0, 0, 1, 1050, 1, 1, 0, 5, 0]
+    @test rsa_results[1].stepinfo[:,1030] == [35, 3, 21, 11, 0, 1, 1069, 1, 2, 0, 2, 0]
+
+    # Clean up the file this test created
+    rm(hdf5_path, force=true)
+
+end

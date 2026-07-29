@@ -1165,7 +1165,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     reset_hdf5_number_of_generations(hdf5_file, generation)
     
     # Update the grids an adsorbate can be located on based on the seed
-    seed_adsorbate_grids!(molecules, restart_runs, origin_rsa_results)
+    seed_adsorbate_grids!(molecules, events.restart_runs, origin_rsa_results)
 
     # Check that the eventlist is reasonable
     check_eventlist!(molecules, grids, events)
