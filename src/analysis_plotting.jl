@@ -11,6 +11,7 @@ using Plots
 #
 # Include statements
 #
+include("analysis_helper.jl")
 
 #
 # Export statements
@@ -543,7 +544,7 @@ function gaussian_distribution(data_vector; zerogaussian = false)
 end
 
 # A function to plot a histogram based on a given vector of numbers
-function plot_histogram(data_vector; labelx = "Value", labely = "Frequentness", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = 0.0)
+function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = 0.0, normalized = false)
 
     # Derive properties of a normal distribution
     if distribution == "truncated"
@@ -553,7 +554,6 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Frequentness", 
     else
         mean, variance = 0.0, 0.0
     end
-
 
     # Get more data
     #Nvalues = size(data_vector, 1)
@@ -566,23 +566,29 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Frequentness", 
         avgvalue, avgvalue_id = 0.0, 0
     end
 
-    # Plot the histogram
-    # normalize only works if minvalue and maxvalue differ
-    # TODO: That still doesn't look right...
-    if minvalue ≠ maxvalue
-        histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = :pdf, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+    # Define the bins of the histrogram
+    bins = range(minvalue, maxvalue, step = stepsize)
+
+    # Scale the gaussian distribution (to the area of the visible bins)
+    if normalized == true
+        plots_normalization = :pdf
+        gaussian_scaling = 1.0
     else
-        histo = histogram(data_vector, xlabel = labelx, ylabel = labely, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+        plots_normalization = :none
+        gaussian_scaling = gaussian_scaling_factor(data_vector, bins)
     end
+
+    # Plot the histogram
+    histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = plots_normalization, xlims=(minvalue, maxvalue), legend=false, bins = bins, dpi = resolution)
 
     # Add the normal distribution
     if distribution == "gaussian"
         x = range(minvalue, maxvalue, step = stepsize/10)
-        y = @. 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
+        y = @. gaussian_scaling * 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
         plot!(x,y, width = 4, lc = "red")
     elseif distribution == "truncated"
         x = range(minvalue, maxvalue, step = stepsize/10)
-        y = @. 2 * 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
+        y = @. gaussian_scaling * 2 * 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
         plot!(x,y, width = 4, lc = "red")
     end
 
@@ -604,7 +610,7 @@ end
 """
 
     plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice)
-    plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0)
+    plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0, normalized = false)
 
 Create histograms counting the number of adsorbed molecules and the covered area. For every molecule type each histogram is generated. In addition, a final set of histograms is generated for all molecule types combined.
 
@@ -620,12 +626,13 @@ Create histograms counting the number of adsorbed molecules and the covered area
 - `plotonly`: Flag to request additional metrics.
 - `count`: Bin size for histogram showing molecule counts.
 - `area`: Bin size for histograms showing covered area.
+- `normalized`: Flag to normalize the histogram with Plots internals.
 
 # Return values
 - `plotonly = true (default)`: A vector of histograms is returned. Count and covered surface is contained pairwise for every molecule type while the second last element contains the total adsorbate count and the last element the total covered area.
 - `plotonly = false`: In addition to the histogram vector, vectors storing the mean values, variance, min and max values, as well as the simulation closest to the mean value are returned. In the following order: histograms, means, variances, minvalues, minvalue_ids, maxvalues, maxvalue_ids, averagevalues, averagevalue_ids.
 """
-function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0)
+function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0, normalized = false)
 
     # If the status is not present for all RSA runs recalculate the status
     if status == false
@@ -674,30 +681,30 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
         plot_id = 0
         for molecule_id in 1:Nmolecules
             plot_id += 1
-            histos[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian")
+            histos[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
             plot_id += 1
-            histos[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian")
+            histos[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
         end
         
         plot_id += 1
-        histos[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian")
+        histos[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
         plot_id += 1
-        histos[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian")
+        histos[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
 
     else
 
         plot_id = 0
         for molecule_id in 1:Nmolecules
             plot_id += 1
-            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian")
+            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
             plot_id += 1
-            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian")
+            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
         end
         
         plot_id += 1
-        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian")
+        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
         plot_id += 1
-        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian")
+        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
 
     end
 
@@ -802,7 +809,7 @@ end
 """
 
     plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice)
-    plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true)
+    plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, normalized = false)
 
 Create an image of the effective gap sizes as well as the histogram showing the frequency of all gap sizes.
 
@@ -819,13 +826,13 @@ Create an image of the effective gap sizes as well as the histogram showing the 
 - `gapsonly`: Flag to request a visualization of only the gaps (removing all adsorbates).
 - `withstroke`: Flag to add a stroke to the visualization of the gap sizes.
 - `plotonly`: Flag to request additional metrics.
-
+- `normalized`: Flag to normalize the histogram with Plots internals.
 
 # Return values
 - `plotonly = true (default)`: Returns the histogram showing the frequency of all gap sizes and a plots object for the visualization of the gaps in the following order: histogram, plot.
 - `plotonly = false`: In addition to the default case, a vector containing the obtained effective gap sizes as well as a vector of the corresponding free grid point are returned. Information are returned in the following order: histogram, plot, gap sizes, free grid points.
 """
-function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0)
+function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0, normalized = false)
 
     # Get the shells of every grid point
     neighbour_shell_list = create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice)
@@ -834,7 +841,7 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
     effective_gap_sizes, free_grid_points = calculate_effective_gap_size(status, neighbour_shell_list, Ngrids, grids, molecules, lattice; dim = 2)
     
     # Create the histogram of the effective gap sizes
-    gaps_histogram = plot_histogram(effective_gap_sizes; labelx = "Effective Gap Size in Å", labely = "Normalized Frequentness", stepsize = stepsize, threshold = threshold)
+    gaps_histogram = plot_histogram(effective_gap_sizes; labelx = "Effective Gap Size in Å", labely = histogram_label(normalized), stepsize = stepsize, threshold = threshold, normalized = normalized)
 
     # Get a plot of all adsorbates
     if gapsonly == false
