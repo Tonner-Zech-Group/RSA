@@ -233,3 +233,20 @@ end
     rm(hdf5_path, force=true)
 
 end
+
+@testset "Tutorial 11-Hexagonal-Cell" begin
+    Random.seed!(2024)
+    inputfile_path = "./11-Hexagonal-Cell/input.inp"
+    NRuns = 1000
+    rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events = perform_multiple_rsa_runs(NRuns, inputfile_path);
+    steps = rsa_results[1000].Nsteps
+
+    @test rsa_results[1000].Nsteps == 74
+    @test rsa_results[1000].Nevents == reshape([[73, 0, 0, 0]], 1, 1)
+    @test rsa_results[1000].status[:,1] == [1, 1, 468, 1]
+    @test rsa_results[1000].status[:,steps - 1] == [1, 1, 92, 2]
+    @test rsa_results[1000].randomseed[1] ≈ 0.40404293174615746
+    @test rsa_results[1000].randomseed[steps - 1] ≈ 0.9569392060853109
+    @test rsa_results[1000].stepinfo[:,1] == [6936, 6936, 0, 0, 0, 1, 468, 1, 1, 0, 1, 0]
+    @test rsa_results[1000].stepinfo[:,steps - 1] == [1, 1, 0, 0, 0, 1, 92, 1, 1, 0, 2, 0]
+end
