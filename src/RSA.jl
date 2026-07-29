@@ -32,6 +32,7 @@ using TimerOutputs: NoTimerOutput
 include("constants.jl")
 include("math.jl")
 include("io.jl")
+include("hdf5.jl")
 include("pbc.jl")
 include("analysis_plotting.jl")
 include("init.jl")
@@ -63,6 +64,7 @@ Mutable struct to store all results of multiple RSA runs.
 - `Nsteps`: Number of performed RSA steps.
 - `Nevents`: Matrix (molecule type, grid type) counting the number of performed events. Every element is a vector counting the event types (ads, rot, dif, con).
 - `stepinfo`: Matrix storing information for every RSA step in columns (Total number of possible events, Number of possible ads/rot/dif/con events, selected grid type, selected gridpoint, selected molecule type, selected event type, selected subevent, selected event, selected subevent).
+- `seed_offset`: Number stating the entries in the status & stepinfo matrix obtained by initializing the surface within a restart run
 
 # Technical fields
 - `size`: Current size of internal matrices.
@@ -74,6 +76,7 @@ Mutable struct to store all results of multiple RSA runs.
     Nevents::Matrix{Vector{Int64}} = Matrix{Int64}(undef, 0, 0) # molecule type, grid type; Vector: 1: Ads, 2: Rot, 3: Dif, 4: Con
     size::Int64 = 0
     stepinfo::Matrix{Int64} = Matrix{Int64}(undef, 12, 0) # Nevents possible, Nads & Nrot & Ndif & Ncon possible, selected grid type, selected gridpoint, selected molecule, selected event type, selected sub event, selected event, selected event 2 
+    seed_offset::Int64 = 0 # Number of entries in the status & stepinfo for the initialization of a restart
 end
 
 #
@@ -934,8 +937,8 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     
 end
 
-# Invoke all routines for a complete rsa run (initialization is not included)
-function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer)
+# Invoke all routines for a complete rsa run
+function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer; seed::Matrix{Int64}=Matrix{Int64}(undef, 4, 0))
 
     # Initialization of event counter
     non_adsorption_events = 0
@@ -956,6 +959,11 @@ function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, 
     # and the cummilative rate constant for ever grid points (cumulative_points_rate_constants)
     rate_constant_buffers = (zeros(Ngrids), zeros(Ngrids), [Vector{Float64}(undef, grids[grid_id].Npoints) for grid_id in 1:Ngrids])
  
+    # Seed the calculation based on the current origin seed
+    # This functions does nothing in case the seed is empty (therefore only used for restart runs)
+    seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, timer)
+    rsa_run_results.seed_offset = size(seed, 2)
+
     # Perform rsa steps until no adsorption is possible any more
     while true
 
@@ -970,8 +978,9 @@ function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, 
 
         # Break conditions:
         # Reached maximum number of RSA steps
+        # Steps of the seeding are not included in the break condition
         if events.break_steps == true
-            if rsa_run_results.Nsteps >= events.steps
+            if rsa_run_results.Nsteps - rsa_run_results.seed_offset >= events.steps
                 break
             end
         end
@@ -1040,16 +1049,39 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # TimerOutputs
     @timeit timer "Initialization" begin
 
-    # Currently there are no restart features
-    Nrun = 1
-
     # Input read input files
     Nmolecules, molecules, Ngrids, grids, lattice, events = read_input(inputfile_path)
+
+    # TimerOutputs
+    end
+
+    # Is this a restart run or the first run
+    if events.restart_flag == true
+        # Continue as restart run
+        return perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events)
+    else
+        # Continue as first run
+        return perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events)
+    end
+
+end
+
+# The main function controlling multiple rsa runs starting from scratch
+function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events)
+
+    # TimerOutputs
+    @timeit timer "Initialization" begin
+
+    # Set the current generation
+    generation = 1
+
+    # Check that the eventlist is reasonable
+    check_eventlist!(molecules, grids, events)
 
     # Create HDF5 output file
     if hdf5 == true
         hdf5_file = create_hdf5_output_file(inputfile_path)
-        write_hdf5_input_information(hdf5_file, Nrun, Nmolecules, molecules, Ngrids, grids, lattice, events)
+        write_hdf5_input_information(hdf5_file, generation, Nmolecules, molecules, Ngrids, grids, lattice, events)
     end
 
     # Generate all relevant matrices
@@ -1057,11 +1089,8 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     
     # Add to the HDF5 file
     if hdf5 == true
-        write_preparation_information(hdf5_file, Nrun, Ngrids, grids, lattice, Nmolecules, molecules, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list)
+        write_preparation_information(hdf5_file, generation, Ngrids, grids, lattice, Nmolecules, molecules, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list)
     end
-
-    # For debugging:
-    #return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list
 
     # Allocate all matrices to store information for every run
     rsa_results = Vector{rsa_run_results_struct}(undef, NRuns)
@@ -1100,7 +1129,7 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
 
     # Add results to HDF5 file
     if hdf5 == true
-        write_rsa_results(hdf5_file, Nrun, NRuns, rsa_results)
+        write_rsa_results(hdf5_file, generation, NRuns, rsa_results)
         #println("All information are stored in the following HDF5 file:")
         #println(hdf5_file)
     end
@@ -1108,16 +1137,109 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # TimerOutputs
     end
 
+    #
+    # Return all results
+    #
+    return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events
+
+end
+
+# The main function controlling multiple rsa runs based on a restart calculation
+function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events)
+
+    # TimerOutputs
+    @timeit timer "Initialization" begin
+
+    # Read the hdf5 file
+    origin_rsa_results, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice, origin_events = read_hdf5_output_file(events.restart_file, events.restart_generation)
+
+    # Check the molecule, grid, and lattice information
+    validate_restart_compatibility(Nmolecules, molecules, Ngrids, grids, lattice, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice)
+    
+    # Set the current generation
+    hdf5_file = events.restart_file
+    generation = read_hdf5_number_of_generations(hdf5_file) + 1
+
+    # Update HDF5 output file
+    create_hdf5_restart_subgroups(hdf5_file, generation)
+    reset_hdf5_number_of_generations(hdf5_file, generation)
+    
+    # Update the grids an adsorbate can be located on based on the seed
+    seed_adsorbate_grids!(molecules, events.restart_runs, origin_rsa_results)
+
+    # Check that the eventlist is reasonable
+    check_eventlist!(molecules, grids, events)
+    
+    # Generate all relevant matrices
+    unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list = rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events)
+    
+    # Add to the HDF5 file
+    write_hdf5_input_information(hdf5_file, generation, Nmolecules, molecules, Ngrids, grids, lattice, events)
+    write_preparation_information(hdf5_file, generation, Ngrids, grids, lattice, Nmolecules, molecules, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list)
+
+    # Get the total number of runs
+    Ntotal = length(events.restart_runs) * NRuns
+
+    # Allocate all matrices to store information for every run
+    rsa_results = Vector{rsa_run_results_struct}(undef, Ntotal)
+
+    # Build the initial grid once and reuse it across all runs
+    rsa_gridpoints = @timeit timer "Grid-Init" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
+
+    # TimerOutputs
+    end
+
+    #
+    # Perform rsa runs
+    #
+
+    # TimerOutput
+    @timeit timer "Simulations" begin
+
+    # The execution is currently not parallelized as this version of the grid reset is not thread safe. The grid reset needs to be reimplemented in a thread safe manner to allow parallel execution of the runs.
+    run_id = 0
+
+    # First loop over the selected origins
+    for origin_id in events.restart_runs
+
+        # Get the seed of the origin run
+        seed_status = origin_rsa_results[origin_id].status
+        
+        # Second loop over NRuns
+        for _ in 1:NRuns
+
+            # Increase run_id
+            run_id += 1
+
+            # Restore the clean initial grid state before every run except the first
+            if run_id != 1
+                @timeit timer "Grid-Reset" reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
+            end
+
+            # Perform the RSA run
+            rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer; seed = seed_status)
+
+        end
+    
+    end
+
+    # TimerOutputs
+    end
+
+    # TimerOutput
+    @timeit timer "Output" begin
+    
+    # Add results to HDF5 file
+    write_rsa_results(hdf5_file, generation, Ntotal, rsa_results)
+
+    # TimerOutputs
+    end
 
     #
     # Return all results
     #
     return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events
 
-    # For debugging
-    #return rsa_results, Nmolecules, molecules, Ngrids, grids, lattice, events, unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list
-
 end
-
 
 end # module RSA

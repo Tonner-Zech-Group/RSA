@@ -16,6 +16,7 @@ cd(tutorial_path)
 @testset "Tutorial 01-Adsorption-Stochastics IO" begin
     inputfile_path = "./01-Adsorption-Stochastics/input.inp"
     Nmolecules, molecules, Ngrids, grids, lattice, events = RSA.read_input(inputfile_path)
+    RSA.check_eventlist!(molecules, grids, events) # Necessary to set molecules[1].grids 
 
     # Molecule input
     @test Nmolecules == 1
@@ -87,6 +88,7 @@ end
 @testset "Tutorial 03-Multiple-Adsorbates IO" begin
     inputfile_path = "./03-Multiple-Adsorbates/input.inp"
     Nmolecules, molecules, Ngrids, grids, lattice, events = RSA.read_input(inputfile_path)
+    RSA.check_eventlist!(molecules, grids, events) # Necessary to set molecules[2].grids
 
     # Only new molecule is checked
     @test Nmolecules == 2
@@ -180,7 +182,7 @@ end
     @test events.conformers[1].molecule_start == 1 && events.conformers[1].molecule_end == 2 && events.conformers[1].grid == 1 && events.conformers[1].weigth == 5.0
 end
 
-@testset "Tutorial 09-HDF5 HDF5 write and read test" begin
+@testset "Tutorial 09-HDF5 IO HDF5" begin
     Random.seed!(2024)
     inputfile_path = "./09-HDF5/input.inp"
     hdf5_path = "./09-HDF5/input.h5"
@@ -194,8 +196,9 @@ end
 
     @test isfile(hdf5_path)
 
+    generation = 1
     rsa_results2, Nmolecules2, molecules2, Ngrids2, grids2, lattice2, events2 =
-        read_hdf5_output_file(hdf5_path)
+        read_hdf5_output_file(hdf5_path, generation)
 
     # Both sets must be identical
     @test Nmolecules2 == Nmolecules
@@ -226,6 +229,10 @@ end
 
     @test events2.Nadsorptions == events.Nadsorptions
     @test events2.Nconformers == events.Nconformers
+    @test events2.restart_flag == events.restart_flag
+    @test events2.restart_generation == events.restart_generation
+    @test events2.restart_runs == events.restart_runs
+    @test events2.restart_file == events.restart_file
 
     # Clean up the file this test created
     rm(hdf5_path, force=true)

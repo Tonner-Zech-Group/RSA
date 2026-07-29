@@ -567,7 +567,13 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Frequentness", 
     end
 
     # Plot the histogram
-    histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = :pdf, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+    # normalize only works if minvalue and maxvalue differ
+    # TODO: That still doesn't look right...
+    if minvalue ≠ maxvalue
+        histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = :pdf, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+    else
+        histo = histogram(data_vector, xlabel = labelx, ylabel = labely, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+    end
 
     # Add the normal distribution
     if distribution == "gaussian"

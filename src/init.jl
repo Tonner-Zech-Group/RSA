@@ -1106,3 +1106,138 @@ function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, event
     return unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list
 
 end
+
+# A function to seed a clean grid with the final configuration of a previous run.
+function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, timer)
+
+    # Nothing to seed for a normal run
+    if size(seed, 2) == 0
+        return
+    end
+
+    # Replay every adsorbate stored in the seed status matrix
+    # This is equal to the event selection step
+    for adsorbate_id in axes(seed, 2)
+        selected_molecule   = seed[1, adsorbate_id]
+        selected_grid_type  = seed[2, adsorbate_id]
+        selected_grid_point = seed[3, adsorbate_id]
+        selected_rotation   = seed[4, adsorbate_id]
+
+        # Increase the step counter
+        rsa_run_results.Nsteps += 1
+
+        # Store all step information
+        # total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible are set to 0 here
+        rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Seed-Stepinfo" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, 0, 0, 0, 0, 0, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0)
+
+        # Count the seeded events (as "selected" events) 
+        rsa_run_results.Nevents[selected_molecule, selected_grid_type][1] += 1
+
+        # Update the status matrix
+        rsa_run_results.status = hcat(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point, selected_rotation])
+
+        # Update event list
+        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
+    end
+
+    # Return nothing
+    return
+
+end
+
+# A function to check the seed and add the molecule_id's to grids they can start on
+function seed_adsorbate_grids!(molecules, restart_runs, origin_rsa_results)
+
+    # First loop over the selected origins
+    for origin_id in restart_runs
+
+        # Get the seed of the origin run
+        seed_status = origin_rsa_results[origin_id].status
+
+        # Second loop over seed entries
+        for ele in axes(seed_status, 2)
+
+            # Get the molecule and grid
+            molecule_id, grid_id = seed_status[1:2, ele]
+
+            # Add the grid to the molecule if not already present
+            if grid_id ∉ molecules[molecule_id].grids
+                push!(molecules[molecule_id].grids, grid_id)
+            end
+
+        end
+
+    end
+
+    # Return mutated argument
+    return molecules
+
+end
+
+# A function to check the molecule, grid, and lattice information in a restart calculation
+function validate_restart_compatibility(Nmolecules, molecules, Ngrids, grids, lattice, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice)
+
+    # Generate placeholders for the error message
+    check_passed = true
+    error_message = String[]
+
+    # Check the lattice
+    # Supercells must be identical
+    if lattice.transx != origin_lattice.transx || lattice.transy != origin_lattice.transy
+        check_passed = false
+        push!(error_message, "lattice translations (transx/transy) differ")
+    end
+    if size(lattice.vectors) != size(origin_lattice.vectors) || ! isapprox(lattice.vectors, origin_lattice.vectors)
+        check_passed = false
+        push!(error_message, "lattice vectors differ")
+    end
+
+    # Check the grids
+    # Existing grids must be identical
+    # New grid types must be appended to the old ones
+    if Ngrids < origin_Ngrids
+        check_passed = false
+        push!(error_message, "grids were removed")
+    else
+        for grid_id in 1:origin_Ngrids
+            if grids[grid_id].Nuniquepoints != origin_grids[grid_id].Nuniquepoints || grids[grid_id].Npoints != origin_grids[grid_id].Npoints
+                check_passed = false
+                push!(error_message, "existing grid " * string(grid_id) * " changed its number of points")
+            elseif ! isapprox(grids[grid_id].uniquepoints, origin_grids[grid_id].uniquepoints)
+                check_passed = false
+                push!(error_message, "existing grid " * string(grid_id) * " coordinates differ")
+            end
+        end
+    end
+
+    # Check the molecules
+    # Existing molecules must be identical
+    # New molecules must be appended to the old ones
+    if Nmolecules < origin_Nmolecules
+        check_passed = false
+        push!(error_message, "molecules were removed")
+    else
+        for molecule_id in 1:origin_Nmolecules
+            if molecules[molecule_id].Natoms != origin_molecules[molecule_id].Natoms || molecules[molecule_id].Nrotations != origin_molecules[molecule_id].Nrotations
+                check_passed = false
+                push!(error_message, "existing molecule " * string(molecule_id) * " Natoms/Nrotations count differs")
+            elseif ! isapprox(molecules[molecule_id].coordinates, origin_molecules[molecule_id].coordinates) || ! isapprox(molecules[molecule_id].rotations, origin_molecules[molecule_id].rotations)
+                check_passed = false
+                push!(error_message, "existing molecule " * string(molecule_id) * " coordinates/rotations differs")
+            end
+        end
+    end
+
+    if check_passed == false
+        println("Restart input is incompatible with the source run.")
+        println("The following differ:")
+        for ele in error_message
+            println("  - " * ele)
+        end
+        error("Restart Compatibility Error")
+    end
+
+    # Return nothing
+    return
+    
+end
