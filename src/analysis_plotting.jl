@@ -265,7 +265,7 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
 
         # Create the frame
         substatus = @view status[1:4,1:realsize]
-        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true)
+        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true)
 
         # Add the frame to the animation
         frame(anim, newframe)
