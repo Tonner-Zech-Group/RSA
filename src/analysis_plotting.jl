@@ -207,7 +207,7 @@ end
 """
 
     animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice)
-    animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1)
+    animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0)
 
 Create an animation of a RSA simulation.
 
@@ -222,15 +222,17 @@ Create an animation of a RSA simulation.
 # Optional input
 - `pixel_per_angstrom`: Resolution of the image controlled by the number of pixels for a distance of 1 angstrom.
 - `boundary_cells`: Number of boundary cells used to plot periodic boundary conditions.
+- `startstep`: First RSA step shown by the animation.
+- `laststep`: Last RSA step shown by the animation. A value of zero (default) requests all steps of the given stepinfo.
 
 # Return values
 - A plots object containing the animation of the RSA simulation.
 
 # Hints
 - Generation of large animations is extremely slow.
-- Only reasonable to use for the initial ~1000 steps (with stepinfo[:,1:1000]).
+- Only reasonable to use for the a few thousand steps.
 """
-function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1)
+function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0)
 
     # Throw a warning in case the resolution is getting to large
     if pixel_per_angstrom > 10
@@ -240,34 +242,39 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
         println("Hint to the user: Your pixel_per_angstrom has an extremely large value! The generation of the animation will be slow and you will get a large animation file. Consider reducing this value.")
     end
 
+    # Get the number of performed RSA steps
+    Nsteps = size(stepinfo,2)
+
+    # Define the range of steps to be animated
+    # A laststep of zero requests all steps of the given stepinfo
+    if laststep ≤ 0 || laststep > Nsteps
+        laststep = Nsteps
+    end
+    if startstep < 1
+        startstep = 1
+    end
+    if startstep > laststep
+        println("The first step of the animation (" * string(startstep) * ") is larger than the last step (" * string(laststep) * ").")
+        error("Animation Range Error")
+    end
+
     # Create the animation object
     anim = Animation()
 
     # Preallocate matrices
     realsize = 0
-    Nframes = size(stepinfo,2)
-    status = Matrix{Int64}(undef, 4, Nframes)
+    status = Matrix{Int64}(undef, 4, Nsteps)
+
+    # Update the status matrix for all steps in front of the first frame
+    for step_id in 1:startstep-1
+        realsize = update_status_by_stepinfo!(status, realsize, stepinfo, step_id)
+    end
 
     # Create the frames
-    for frame_id in ProgressBar(1:Nframes)
+    for frame_id in ProgressBar(startstep:laststep)
 
-        # Get the information for this step
-        selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @view stepinfo[6:12, frame_id]
-        
-        # Update the status matrix
-        if selected_event_type == 1
-            realsize += 1
-            status[1:4,realsize] = [selected_molecule, selected_grid_type, selected_grid_point, selected_event]
-        elseif selected_event_type == 2
-            change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            status[4,change_column] = selected_event
-        elseif selected_event_type == 3
-            change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            status[2:4,change_column] = [selected_subevent, selected_event, selected_event_2]
-        elseif selected_event_type == 4
-            change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            status[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
-        end
+        # Get the information for this step and update the status matrix
+        realsize = update_status_by_stepinfo!(status, realsize, stepinfo, frame_id)
 
         # Create the frame
         substatus = @view status[1:4,1:realsize]
@@ -395,42 +402,6 @@ function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, file_p
 
     # Close the file
     close(io)
-
-end
-
-# A function to reduce the run information into a final status matrix
-function reduce_rsa_run_info(stepinfo)
-    
-    # Generate the empty matrix
-    maxsize = size(stepinfo, 2)
-    realsize = 0
-    reduced_info = Matrix{Int64}(undef, 4, maxsize)
-
-    # Update the matrix based on every performed rsa step
-    for info_id in axes(stepinfo, 2)
-
-        # Get the information for this step
-        selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @view stepinfo[6:12, info_id]
-
-        # Update the reduced_info matrix
-        if selected_event_type == 1
-            realsize += 1
-            reduced_info[1:4,realsize] = [selected_molecule, selected_grid_type, selected_grid_point, selected_event]
-        elseif selected_event_type == 2
-            change_column = findfirst_column(reduced_info, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            reduced_info[4,change_column] = selected_event
-        elseif selected_event_type == 3
-            change_column = findfirst_column(reduced_info, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            reduced_info[2:4,change_column] = [selected_subevent, selected_event, selected_event_2]
-        elseif selected_event_type == 4
-            change_column = findfirst_column(reduced_info, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            reduced_info[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
-        end
-
-    end
-
-    # Return the result
-    return reduced_info[:,1:realsize]
 
 end
 

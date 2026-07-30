@@ -244,3 +244,50 @@ function collect_count_area_data_sets(Nmolecules, adsorbate_count_per_run, adsor
     return data_sets, data_labels
 
 end
+
+# A function to update a status matrix based on a single step of a stepinfo matrix
+# Returns the updated number of adsorbates stored within the status matrix
+function update_status_by_stepinfo!(status, realsize, stepinfo, step_id)
+
+    # Get the information for this step
+    selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @view stepinfo[6:12, step_id]
+        
+    # Update the status matrix
+    if selected_event_type == 1
+        realsize += 1
+        status[1:4,realsize] = [selected_molecule, selected_grid_type, selected_grid_point, selected_event]
+    elseif selected_event_type == 2
+        change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
+        status[4,change_column] = selected_event
+    elseif selected_event_type == 3
+        change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
+        status[2:4,change_column] = [selected_subevent, selected_event, selected_event_2]
+    elseif selected_event_type == 4
+        change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
+        status[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
+    end
+
+    # Return the number of adsorbates
+    return realsize
+
+end
+
+# A function to reduce the run information into a final status matrix
+function reduce_rsa_run_info(stepinfo)
+    
+    # Generate the empty matrix
+    maxsize = size(stepinfo, 2)
+    realsize = 0
+    reduced_info = Matrix{Int64}(undef, 4, maxsize)
+
+    # Update the matrix based on every performed rsa step
+    for info_id in axes(stepinfo, 2)
+
+        realsize = update_status_by_stepinfo!(reduced_info, realsize, stepinfo, info_id)
+
+    end
+
+    # Return the result
+    return reduced_info[:,1:realsize]
+
+end
