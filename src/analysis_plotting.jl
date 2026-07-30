@@ -61,32 +61,9 @@ function displaced_molecule_status(status, status_element, molecules, grids, lat
 
 end
 
-# A function to plot all molecules on their selected gridpoints
-"""
-
-    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice)
-    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true)
-
-Create an image of the surface covered by adsorbates.
-
-# Input
-- `status`: A status field of a rsa\\_run\\_results\\_struct object.
-- `Ngrids`: Integer number of present grid types.
-- `grids`: A grid_struct object.
-- `Nmolecules`: Integer number of present molecule types.
-- `molecules`: A molecule_struct object.
-- `lattice`: A lattice_struct object.
-
-# Optional input
-- `pixel_per_angstrom`: Resolution of the image controlled by the number of pixels for a distance of 1 angstrom as floating point number.
-- `boundary_cells`: Integer number of boundary cells used to plot periodic boundary conditions.
-- `silent`: Bool flag to request additional output statements.
-
-# Return values
-- A plots object of the covered surface.
-"""
-function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true)
-
+# A function to plot the points of all grids
+function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, silent = true)
+    
     # Define the image resolution
     x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
     y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
@@ -109,93 +86,100 @@ function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pix
             scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id])
         end
     end
+
+    # Return the grid plot
+    return final_plot
+
+end
+
+
+# A function to plot all molecules on their selected gridpoints
+"""
+
+    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice)
+    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing)
+
+Create an image of the surface covered by adsorbates.
+
+# Input
+- `status`: A status field of a rsa\\_run\\_results\\_struct object.
+- `Ngrids`: Integer number of present grid types.
+- `grids`: A grid_struct object.
+- `Nmolecules`: Integer number of present molecule types.
+- `molecules`: A molecule_struct object.
+- `lattice`: A lattice_struct object.
+
+# Optional input
+- `pixel_per_angstrom`: Resolution of the image controlled by the number of pixels for a distance of 1 angstrom as floating point number.
+- `boundary_cells`: Integer number of boundary cells used to plot periodic boundary conditions.
+- `silent`: Bool flag to request additional output statements.
+- `gridplot`: A prepared plot of the grid points to prevent the repeated generation of an identical background.
+
+# Return values
+- A plots object of the covered surface.
+"""
+function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing)
+
+    # Define the axes size
+    x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
+    y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
     
-    #println("Number of grids: " * string(Ngrids))   
+    # A prepared plot of the grid points can be handed over to skip the generation of an identical background
+    if gridplot === nothing
+        final_plot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom, silent = silent)
+    else
+        final_plot = deepcopy(gridplot)
+    end 
     
     # Define color of molecule
-    molecule_palette = palette(:darktest, Nmolecules)    
+    molecule_palette = palette(:darktest, Nmolecules)
 
-    # Plot every molecule
+    # Define the marker size of every molecule type
+    markersize_per_molecule = Vector{Vector{Float64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        markersize_per_molecule[molecule_id] = Float64.(atomic_information[molecules[molecule_id].elements_sorted[:], 3]) * pixel_per_angstrom
+    end
+
+    # Create the vectors collecting the atoms of all adsorbates of every molecule type
+    x_coordinates = Vector{Vector{Float64}}(undef, Nmolecules)
+    y_coordinates = Vector{Vector{Float64}}(undef, Nmolecules)
+    markersizes = Vector{Vector{Float64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        x_coordinates[molecule_id] = Vector{Float64}(undef, 0)
+        y_coordinates[molecule_id] = Vector{Float64}(undef, 0)
+        markersizes[molecule_id] = Vector{Float64}(undef, 0)
+    end
+
+    # Collect every molecule
     for element_id in axes(status, 2)
 
         # Get the displaced coordinates and elements
         molec_coords, displaced_coordinates, molec_elements, gridpoint_coords, molecule_id, grid_id, point_id = displaced_molecule_status(status, element_id, molecules, grids, lattice)
  
-        # Define the marker size
-        markersize_vector = atomic_information[molec_elements[:], 3] * pixel_per_angstrom 
+        # Add the adsorbate
+        append!(x_coordinates[molecule_id], displaced_coordinates[1,:])
+        append!(y_coordinates[molecule_id], displaced_coordinates[2,:])
+        append!(markersizes[molecule_id], markersize_per_molecule[molecule_id])
 
-        # Add to plot
-        scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-
-        # Check whether the adsorbate was within the boundary cells
+        # Check whether the adsorbate was within the boundary cells and add all needed periodic images
         transx, transy = grids[grid_id].mapping[2:3,point_id]
-        # Increase by one to adapt the scale to "1 to Ncells"
-        transx += 1
-        transy += 1
-        if transx ≤ boundary_cells
-            if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1] + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1] - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            else
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            end
-        elseif (lattice.Ncellx - boundary_cells) < transx
-            if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1] + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id]) 
-            elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1] - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            else
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            end
-        else
-            if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            end
-        end
+        translations = boundary_translation_vectors(transx, transy, boundary_cells, lattice)
+        for translation_id in eachindex(translations)
+            gridpoint_coords_moved = gridpoint_coords + translations[translation_id]
+            displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
+            append!(x_coordinates[molecule_id], displaced_coordinates[1,:])
+            append!(y_coordinates[molecule_id], displaced_coordinates[2,:])
+            append!(markersizes[molecule_id], markersize_per_molecule[molecule_id])
+         end
 
+    end
+
+    # Plot all adsorbates of every molecule type
+    for molecule_id in 1:Nmolecules
+        if isempty(x_coordinates[molecule_id])
+            continue
+        end
+        scatter!(final_plot, x_coordinates[molecule_id], y_coordinates[molecule_id], markersize = markersizes[molecule_id], markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
     end
 
     # Return final plot
@@ -261,6 +245,9 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
     # Create the animation object
     anim = Animation()
 
+    # Create the plot of the grid points once and use it as the background of every frame
+    gridplot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom)
+
     # Preallocate matrices
     realsize = 0
     status = Matrix{Int64}(undef, 4, Nsteps)
@@ -278,7 +265,7 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
 
         # Create the frame
         substatus = @view status[1:4,1:realsize]
-        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true)
+        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true, gridplot = gridplot)
 
         # Add the frame to the animation
         frame(anim, newframe)

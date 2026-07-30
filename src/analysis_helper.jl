@@ -257,13 +257,13 @@ function update_status_by_stepinfo!(status, realsize, stepinfo, step_id)
         realsize += 1
         status[1:4,realsize] = [selected_molecule, selected_grid_type, selected_grid_point, selected_event]
     elseif selected_event_type == 2
-        change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
+        change_column = findfirst_column(@view(status[:,1:realsize]), [selected_molecule, selected_grid_type, selected_grid_point], 3)
         status[4,change_column] = selected_event
     elseif selected_event_type == 3
-        change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
+        change_column = findfirst_column(@view(status[:,1:realsize]), [selected_molecule, selected_grid_type, selected_grid_point], 3)
         status[2:4,change_column] = [selected_subevent, selected_event, selected_event_2]
     elseif selected_event_type == 4
-        change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
+        change_column = findfirst_column(@view(status[:,1:realsize]), [selected_molecule, selected_grid_type, selected_grid_point], 3)
         status[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
     end
 
@@ -291,3 +291,4 @@ function reduce_rsa_run_info(stepinfo)
     return reduced_info[:,1:realsize]
 
 end
+
