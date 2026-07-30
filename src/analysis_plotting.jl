@@ -62,7 +62,7 @@ function displaced_molecule_status(status, status_element, molecules, grids, lat
 end
 
 # A function to plot the points of all grids
-function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, silent = true)
+function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, silent = true, withmargins = false)
     
     # Define the image resolution
     x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
@@ -77,11 +77,14 @@ function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, sil
     # Define color of grid points
     grid_palette = palette(:darktest, Ngrids)
 
+    # Define the white space around the simulation cell
+    plot_margin, plot_framestyle, plot_ticks = simulation_cell_attributes(withmargins)
+
     # Plot the grids
     final_plot = 0
     for grid_id in 1:Ngrids
         if grid_id == 1
-            final_plot = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id], widen = false)
+            final_plot = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id], widen = false, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         else
             scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id])
         end
@@ -97,7 +100,7 @@ end
 """
 
     plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice)
-    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing)
+    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing, withmargins = false)
 
 Create an image of the surface covered by adsorbates.
 
@@ -114,11 +117,12 @@ Create an image of the surface covered by adsorbates.
 - `boundary_cells`: Integer number of boundary cells used to plot periodic boundary conditions.
 - `silent`: Bool flag to request additional output statements.
 - `gridplot`: A prepared plot of the grid points to prevent the repeated generation of an identical background.
+- `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
 
 # Return values
 - A plots object of the covered surface.
 """
-function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing)
+function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing, withmargins = false)
 
     # Define the axes size
     x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
@@ -126,7 +130,7 @@ function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pix
     
     # A prepared plot of the grid points can be handed over to skip the generation of an identical background
     if gridplot === nothing
-        final_plot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom, silent = silent)
+        final_plot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom, silent = silent, withmargins = withmargins)
     else
         final_plot = deepcopy(gridplot)
     end 
@@ -191,7 +195,7 @@ end
 """
 
     animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice)
-    animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0)
+    animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0, withmargins = false)
 
 Create an animation of a RSA simulation.
 
@@ -208,6 +212,7 @@ Create an animation of a RSA simulation.
 - `boundary_cells`: Number of boundary cells used to plot periodic boundary conditions.
 - `startstep`: First RSA step shown by the animation.
 - `laststep`: Last RSA step shown by the animation. A value of zero (default) requests all steps of the given stepinfo.
+- `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
 
 # Return values
 - A plots object containing the animation of the RSA simulation.
@@ -216,7 +221,7 @@ Create an animation of a RSA simulation.
 - Generation of large animations is extremely slow.
 - Only reasonable to use for the a few thousand steps.
 """
-function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0)
+function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0, withmargins = false)
 
     # Throw a warning in case the resolution is getting to large
     if pixel_per_angstrom > 10
@@ -246,7 +251,7 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
     anim = Animation()
 
     # Create the plot of the grid points once and use it as the background of every frame
-    gridplot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom)
+    gridplot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom, withmargins = withmargins)
 
     # Preallocate matrices
     realsize = 0
@@ -265,7 +270,7 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
 
         # Create the frame
         substatus = @view status[1:4,1:realsize]
-        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true, gridplot = gridplot)
+        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true, gridplot = gridplot, withmargins = withmargins)
 
         # Add the frame to the animation
         frame(anim, newframe)
@@ -389,19 +394,6 @@ function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, file_p
 
     # Close the file
     close(io)
-
-end
-
-# A function to reduce the run information of all runs into a finals status matrix (using a rsa_run_results_struct object)
-function reduce_rsa_allrun_info!(Nruns, rsa_results)
-
-    # Loop over all runs
-    for run_id in 1:Nruns
-
-        # Get the status matrix
-        rsa_results[run_id].status = reduce_rsa_run_info(rsa_results[run_id].stepinfo)
-
-    end
 
 end
 
@@ -646,7 +638,7 @@ end
 """
 
     plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice)
-    plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, normalized = false)
+    plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, normalized = false, withmargins = false)
 
 Create an image of the effective gap sizes as well as the histogram showing the frequency of all gap sizes.
 
@@ -664,12 +656,13 @@ Create an image of the effective gap sizes as well as the histogram showing the 
 - `withstroke`: Flag to add a stroke to the visualization of the gap sizes.
 - `plotonly`: Flag to request additional metrics.
 - `normalized`: Flag to normalize the histogram with Plots internals.
+- `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
 
 # Return values
 - `plotonly = true (default)`: Returns the histogram showing the frequency of all gap sizes and a plots object for the visualization of the gaps in the following order: histogram, plot.
 - `plotonly = false`: In addition to the default case, a vector containing the obtained effective gap sizes as well as a vector of the corresponding free grid point are returned. Information are returned in the following order: histogram, plot, gap sizes, free grid points.
 """
-function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0, normalized = false)
+function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0, normalized = false, withmargins = false)
 
     # Get the shells of every grid point
     neighbour_shell_list = create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice)
@@ -682,7 +675,7 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
 
     # Get a plot of all adsorbates
     if gapsonly == false
-        plot_gaps = plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true)
+        plot_gaps = plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true, withmargins = withmargins)
     end
 
     # Collect coordinates of free grid points
@@ -715,6 +708,9 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
         # Define color of grid points
         grid_palette = palette(:darktest, Ngrids)
 
+        # Define the white space around the simulation cell
+        plot_margin, plot_framestyle, plot_ticks = simulation_cell_attributes(withmargins)
+
         # Plot the grids
         #for grid_id in 1:Ngrids
         #    if grid_id == 1
@@ -726,9 +722,9 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
 
         # Add the gaps
         if withstroke == true
-            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 10 / pixel_per_angstrom, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey)
+            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 10 / pixel_per_angstrom, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         else
-            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 0, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey)
+            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 0, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         end
 
     end

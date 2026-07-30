@@ -292,3 +292,27 @@ function reduce_rsa_run_info(stepinfo)
 
 end
 
+# A function to reduce the run information of all runs into a finals status matrix (using a rsa_run_results_struct object)
+function reduce_rsa_allrun_info!(Nruns, rsa_results)
+
+    # Loop over all runs
+    for run_id in 1:Nruns
+
+        # Get the status matrix
+        rsa_results[run_id].status = reduce_rsa_run_info(rsa_results[run_id].stepinfo)
+
+    end
+
+end
+
+# A function to derive the plot attributes controlling the white space around the simulation cell
+# Returns the margin, the framestyle, and the ticks used for the plot
+function simulation_cell_attributes(withmargins)
+
+    if withmargins == true
+        return 1 * Plots.mm, :axes, :auto
+    else
+        return -2 * Plots.mm, :none, false
+    end
+
+end
