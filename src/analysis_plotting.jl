@@ -21,6 +21,7 @@ export plot_single_molecule
 export animate_RSA_run
 export plot_count_area_histograms
 export plot_count_area_convergence
+export plot_single_run_convergence
 export plot_effective_gap_size
 export gif
 export savefig
@@ -1074,6 +1075,95 @@ function plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, 
         return convergence_plots
     else
         return convergence_plots, Nruns_values, convergence_data
+    end
+
+end
+
+# A function to plot the convergence of properties of a single RSA run
+"""
+
+    plot_single_run_convergence(stepinfo, Nmolecules, molecules, lattice)
+    plot_single_run_convergence(stepinfo, Nmolecules, molecules, lattice; errorrange = 0.0, startstep = 1, laststep = 0, plotonly = true, resolution = 600)
+
+Create a plot showing the convergence of adsorbate count and covered area of a single RSA simulation with the number of performed RSA steps.
+
+# Input
+- `stepinfo`: A stepinfo field of a rsa_run_results_struct.
+- `Nmolecules`: Number of present molecule types.
+- `molecules`: A molecule_struct object.
+- `lattice`: A lattice_struct object.
+
+# Optional input
+- `errorrange`: Range in % which is added to and subtracted from the final value of every property. The resulting range is highlighted within the plot. A value of zero (default) requests no range.
+- `startstep`: First RSA step shown by the plot.
+- `laststep`: Last RSA step shown by the plot. A value of zero (default) requests all steps of the given stepinfo.
+- `plotonly`: Flag to request the plotted data in addition to the plot.
+- `resolution`: Resolution of the image controlled by the dpi value.
+
+# Return values
+- `plotonly = true (default)`: A vector containing the plots for each adsorbate and all adsorbates together.
+- `plotonly = false`: In addition to the plots, a vector containing the ploted data as well as a vector stating at which step convergence is reached are returned.
+"""
+function plot_single_run_convergence(stepinfo, Nmolecules, molecules, lattice; errorrange = 0.0, startstep = 1, laststep = 0, plotonly = true, resolution = 600)
+
+    # Get the number of performed RSA steps
+    Nsteps = size(stepinfo, 2)
+
+    # Define the range of steps to be plotted
+    # A laststep of zero (default) requests all steps of the given stepinfo
+    if laststep ≤ 0 || laststep > Nsteps
+        laststep = Nsteps
+    end
+    if startstep < 1
+        startstep = 1
+    end
+    if startstep > laststep
+        println("The first plotted step (" * string(startstep) * ") is larger than the last plotted step (" * string(laststep) * ").")
+        error("Analysis Range Error")
+    end
+
+    # Get the count and area per step
+    count_per_step, area_per_step = calculate_count_area_per_step(Nsteps, stepinfo, Nmolecules, molecules, lattice)
+
+    # Collect all data sets to be plotted
+    data_sets, data_labels = collect_count_area_data_sets(Nmolecules, count_per_step, area_per_step; capital = true)
+    Nsets = size(data_sets, 1)
+
+    # Plot the convergence: One plot for every data set
+    convergence_plots = Vector{Any}(undef, Nsets)
+    convergence_steps = zeros(Int64, Nsets)
+    for set_id in 1:Nsets
+
+        # The bare plot
+        convergence_plot = plot(xlabel = "RSA step", ylabel = data_labels[set_id], legend = false, dpi = resolution)
+
+        # Add an error range if requested
+        if errorrange > 0.0
+            
+            # Define the range based on the final value of the property
+            finalvalue = data_sets[set_id][Nsteps]
+            lowervalue = finalvalue * (1.0 - errorrange/100)
+            uppervalue = finalvalue * (1.0 + errorrange/100)
+
+            # Highlight the range over the complete range of plotted steps
+            plot!(convergence_plot, [startstep, laststep], [lowervalue, lowervalue], fillrange = [uppervalue, uppervalue], fillalpha = 0.2, fillcolor = :grey, linewidth = 0)
+
+            # Get the first step from which the property stays within the range
+            convergence_steps[set_id] = find_convergence_step(data_sets[set_id], lowervalue, uppervalue)
+
+        end
+
+        # Plot the data
+        plot!(convergence_plot, [startstep:laststep], data_sets[set_id][startstep:laststep], width = 2)
+        convergence_plots[set_id] = convergence_plot
+
+    end
+
+    # Return results
+    if plotonly == true
+        return convergence_plots
+    else
+        return convergence_plots, data_sets, convergence_steps
     end
 
 end
