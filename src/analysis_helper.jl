@@ -178,7 +178,7 @@ function calculate_count_area_per_step(Nsteps, stepinfo, Nmolecules, molecules, 
 end
 
 # Function to derive gaussian distribution over a given vector of numbers
-# Returns mean and variance of the distribution as float
+# Returns mean and standard deviation of the distribution as float
 function gaussian_distribution(data_vector; zerogaussian = false)
     
     # Number of values
@@ -191,20 +191,20 @@ function gaussian_distribution(data_vector; zerogaussian = false)
         mean = 0.0
     end
 
-    # Calculate the variance
+    # Calculate the standard deviation
     tmp_values = Float64.(deepcopy(data_vector))
     tmp_values .-= mean
-    variance = sqrt(sum(abs2, tmp_values) / Nvalues)
+    standarddeviation = sqrt(sum(abs2, tmp_values) / Nvalues)
 
-    return mean, variance
+    return mean, standarddeviation
 
 end
 
-# A function to derive all metrics of a data set (mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id)
+# A function to derive all metrics of a data set (mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id)
 function calculate_data_set_metrics(data_vector; zerogaussian = false)
 
     # Derive properties of a normal distribution
-    mean, variance = gaussian_distribution(data_vector, zerogaussian = zerogaussian)
+    mean, standarddeviation = gaussian_distribution(data_vector, zerogaussian = zerogaussian)
 
     # Get the smallest and the largest value
     minvalue, minvalue_id = findmin(data_vector)
@@ -215,7 +215,7 @@ function calculate_data_set_metrics(data_vector; zerogaussian = false)
     avgvalue = data_vector[avgvalue_id]
 
     # Return all metrics
-    return mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id
+    return mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id
 
 end
 

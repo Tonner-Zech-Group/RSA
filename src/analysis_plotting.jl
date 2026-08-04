@@ -32,8 +32,8 @@ export write_RSA_structures
 #
 
 # Names of the metrics of a data set which are accepted by the analysis functions
-const statistics_property_names = ["means", "variances", "minvalues", "minvalue_ids", "maxvalues", "maxvalue_ids", "avgvalues", "avgvalue_ids"]
-const statistics_property_labels = ["Mean value", "Variance", "Minimum value", "Run with the minimum value", "Maximum value", "Run with the maximum value", "Most average value", "Most average run"]
+const statistics_property_names = ["means", "standarddeviations", "minvalues", "minvalue_ids", "maxvalues", "maxvalue_ids", "avgvalues", "avgvalue_ids"]
+const statistics_property_labels = ["Mean value", "Standard deviation", "Minimum value", "Run with the minimum value", "Maximum value", "Run with the maximum value", "Most average value", "Most average run"]
 
 #
 # Specific section for this file
@@ -403,11 +403,11 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
 
     # Derive all metrics of the data set
     if distribution == "truncated"
-        mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = calculate_data_set_metrics(data_vector; zerogaussian = true)
+        mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = calculate_data_set_metrics(data_vector; zerogaussian = true)
     elseif distribution == "gaussian"
-        mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = calculate_data_set_metrics(data_vector; zerogaussian = false)
+        mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = calculate_data_set_metrics(data_vector; zerogaussian = false)
     else
-        mean, variance = 0.0, 0.0
+        mean, standarddeviation = 0.0, 0.0
         minvalue, minvalue_id = findmin(data_vector)
         maxvalue, maxvalue_id = findmax(data_vector)
         avgvalue, avgvalue_id = 0.0, 0
@@ -431,11 +431,11 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
     # Add the normal distribution
     if distribution == "gaussian"
         x = range(minvalue, maxvalue, step = stepsize/10)
-        y = @. gaussian_scaling * 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
+        y = @. gaussian_scaling * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
     elseif distribution == "truncated"
         x = range(minvalue, maxvalue, step = stepsize/10)
-        y = @. gaussian_scaling * 2 * 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
+        y = @. gaussian_scaling * 2 * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
     end
 
@@ -448,7 +448,7 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
     if plotonly == true
         return histo
     else
-        return histo, mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id
+        return histo, mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id
     end
     
 end
@@ -477,7 +477,7 @@ Create histograms counting the number of adsorbed molecules and the covered area
 
 # Return values
 - `plotonly = true (default)`: A vector of histograms is returned. Count and covered surface is contained pairwise for every molecule type while the second last element contains the total adsorbate count and the last element the total covered area.
-- `plotonly = false`: In addition to the histogram vector, vectors storing the mean values, variance, min and max values, as well as the simulation closest to the mean value are returned. In the following order: histograms, means, variances, minvalues, minvalue_ids, maxvalues, maxvalue_ids, averagevalues, averagevalue_ids.
+- `plotonly = false`: In addition to the histogram vector, vectors storing the mean values, standarddeviation, min and max values, as well as the simulation closest to the mean value are returned. In the following order: histograms, means, standarddeviations, minvalues, minvalue_ids, maxvalues, maxvalue_ids, averagevalues, averagevalue_ids.
 """
 function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0, normalized = false)
 
@@ -496,7 +496,7 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
     else
         histos = Vector{Any}(undef, (Nmolecules * 2) + 2)
         means = Vector{Float64}(undef, (Nmolecules * 2) + 2)
-        variances = Vector{Float64}(undef, (Nmolecules * 2) + 2)
+        standarddeviations = Vector{Float64}(undef, (Nmolecules * 2) + 2)
         minvalues = Vector{Float64}(undef, (Nmolecules * 2) + 2)
         minvalue_ids = Vector{Int64}(undef, (Nmolecules * 2) + 2)
         maxvalues = Vector{Float64}(undef, (Nmolecules * 2) + 2)
@@ -526,15 +526,15 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
         plot_id = 0
         for molecule_id in 1:Nmolecules
             plot_id += 1
-            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
+            histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
             plot_id += 1
-            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
+            histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
         end
         
         plot_id += 1
-        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
+        histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
         plot_id += 1
-        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
+        histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
 
     end
 
@@ -542,7 +542,7 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
     if plotonly == true
         return histos
     else
-        return histos, means, variances, minvalues, minvalue_ids, maxvalues, maxvalue_ids, avgvalues, avgvalue_ids
+        return histos, means, standarddeviations, minvalues, minvalue_ids, maxvalues, maxvalue_ids, avgvalues, avgvalue_ids
     end
 
 end
@@ -984,7 +984,7 @@ end
 """
 
     plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice)
-    plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, properties = ["means", "variances"], stride = 1, reference = true, resolution = 600)
+    plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, properties = ["means", "standarddeviations"], stride = 1, reference = true, resolution = 600)
 
 Create plots showing the convergence of the metrics with the number of RSA simulations.  
 
@@ -999,7 +999,7 @@ Create plots showing the convergence of the metrics with the number of RSA simul
 # Optional input
 - `status`: Flag forcing the recalculation of the status based on the stepinfo field.
 - `plotonly`: Flag to request the plotted data in addition to the plots.
-- `properties`: Vector of the metrics to be plotted. Accepted values are "means", "variances", "minvalues", "minvalue\\_ids", "maxvalues", "maxvalue\\_ids", "avgvalues", and "avgvalue\\_ids".
+- `properties`: Vector of the metrics to be plotted. Accepted values are "means", "standarddeviations", "minvalues", "minvalue\\_ids", "maxvalues", "maxvalue\\_ids", "avgvalues", and "avgvalue\\_ids".
 - `stride`: Number of runs added between two evaluations of the metrics. The final evaluation always includes all runs.
 - `reference`: Flag to add the value obtained with all RSA runs as a dashed horizontal line.
 - `resolution`: Resolution of the images controlled by the dpi value.
@@ -1008,7 +1008,7 @@ Create plots showing the convergence of the metrics with the number of RSA simul
 - `plotonly = true (default)`: A matrix of plots. First index indicates the plotted molecule (area or count) while second index follows the order of the requested properties.
 - `plotonly = false`: In addition to the matrix of plots, the vector of the evaluated numbers of runs and the plotted values are returned. The values are given as a vector over the data sets, with every element being a matrix of the evaluated numbers of runs in rows and the requested properties in columns. Information are returned in the following order: plots, numbers of runs, values.
 """
-function plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, properties = ["means", "variances"], stride = 1, reference = true, resolution = 600)
+function plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, properties = ["means", "standarddeviations"], stride = 1, reference = true, resolution = 600)
 
     # Get the adsorbate count and the covered area (in %) of every run
     adsorbate_count_per_run, adsorbate_area_per_run = calculate_count_area_per_run(Nruns, rsa_results, Nmolecules, molecules, lattice; status = status)
