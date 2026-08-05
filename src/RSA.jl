@@ -878,7 +878,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     rsa_run_results.Nsteps += 1
 
     # Create total rate constants
-    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
     #=
     println("Total rate constant: "*string(total_rate_constant))
     println("Cummulative grid rate constant: "*string(cumulative_grid_rate_constants))
@@ -890,30 +890,30 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     if force_adsorption == true && total_events_possible == 0
         # As an adsorption event can not be forced the rate constants are recalculated without forced adsorption
         force_adsorption = false
-        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Total Rateconstant 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
     end
 
 
     # Stop the RSA run in case no reaction event is possible
     if total_events_possible == 0
         push!(rsa_run_results.randomseed, -1)
-        rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, 0, 0, 0, 0, 0, 0, 0)
+        rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Step info bookkeeping" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, 0, 0, 0, 0, 0, 0, 0)
         return
     end
 
     # Select event
-    random_number, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @timeit timer "Select event" select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, rsa_gridpoints, Ngrids, grids, Nmolecules, rate_constants_info, force_adsorption)
+    random_number, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @timeit timer "Event selection" select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, rsa_gridpoints, Ngrids, grids, Nmolecules, rate_constants_info, force_adsorption)
 
     # Store information
     # Collect the random numbers
-    @timeit timer "Randomseed" push!(rsa_run_results.randomseed, random_number)
+    @timeit timer "Random number bookkeeping" push!(rsa_run_results.randomseed, random_number)
     # Count the selected events
     rsa_run_results.Nevents[selected_molecule, selected_grid_type][selected_event_type] += 1
     # Store all step information
-    rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Stepinfo" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2)
+    rsa_run_results.stepinfo, rsa_run_results.size = @timeit timer "Step info bookkeeping" fill_preallocated_status_matrix(rsa_run_results.size, rsa_run_results.stepinfo, rsa_run_results.Nsteps, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2)
 
     # Update the status matrix
-    @timeit timer "Status matrix" begin
+    @timeit timer "Adsorbate status bookkeeping" begin
     if selected_event_type == 1
         rsa_run_results.status = hcat(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point, selected_event])
     elseif selected_event_type == 2
@@ -930,7 +930,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     end
 
     # Update event list
-    @timeit timer "Update eventlist" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
+    @timeit timer "Event list update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
 
     # Return additional information for IO etc
     #return 
@@ -1085,7 +1085,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     end
 
     # Generate all relevant matrices
-    unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list = rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events)
+    unit_cell_gridpoints_difference, translation_distance_vectors, rotation_difference_matrices, Affected_Points_Rotations, rate_constants_info, neighbour_list = @timeit timer "Event initialization" rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, events)
     
     # Add to the HDF5 file
     if hdf5 == true
@@ -1096,7 +1096,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     rsa_results = Vector{rsa_run_results_struct}(undef, NRuns)
 
     # Build the initial grid once and reuse it across all runs
-    rsa_gridpoints = @timeit timer "Grid-Init" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
+    rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
     # TimerOutputs
     end
@@ -1113,7 +1113,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
 
         # Restore the clean initial grid state before every run except the first
         if run_id != 1
-            @timeit timer "Grid-Reset" reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
+            @timeit timer "Grid reset" reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
         end
 
         # Perform the RSA run
@@ -1125,7 +1125,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     end
 
     # TimerOutput
-    @timeit timer "Output" begin
+    @timeit timer "Output storage" begin
 
     # Add results to HDF5 file
     if hdf5 == true
@@ -1184,7 +1184,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     rsa_results = Vector{rsa_run_results_struct}(undef, Ntotal)
 
     # Build the initial grid once and reuse it across all runs
-    rsa_gridpoints = @timeit timer "Grid-Init" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
+    rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
     # TimerOutputs
     end
@@ -1213,7 +1213,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
 
             # Restore the clean initial grid state before every run except the first
             if run_id != 1
-                @timeit timer "Grid-Reset" reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
+                @timeit timer "Grid reset" reset_gridpoints!(rsa_gridpoints, Ngrids, Nmolecules, molecules, rate_constants_info)
             end
 
             # Perform the RSA run
