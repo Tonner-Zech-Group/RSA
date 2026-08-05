@@ -13,7 +13,7 @@ tutorial_subsection = ["tutorials/01-adsorption-stochastics.md", "tutorials/02-b
 #makedocs(sitename="RSA.jl", remotes=nothing,
    #format = Documenter.HTML(assets = ["assets/custom.css"], prettyurls = false),
 
-makedocs(sitename="RandomSequentialAdsorption.jl",
+makedocs(sitename="RSA.jl",
    format = Documenter.HTML(assets = ["assets/custom.css"], prettyurls = true),
    pages = ["Home" => "index.md",
             "About RSA" => "rsa.md",
