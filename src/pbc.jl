@@ -165,3 +165,48 @@ function map_translation_to_gridpoint(unique_point, Nunique_points, transx, Ncel
     return unique_point + transy * Nunique_points + transx * Ncelly * Nunique_points
 
 end
+
+# A function to derive the translation vectors needed to plot the periodic images of an adsorbate
+# Adsorbates are only shifted in case they are located within the boundary cells of the lattice
+# The returned vector is empty for all adsorbates outside of the boundary cells
+function boundary_translation_vectors(transx, transy, boundary_cells, lattice)
+
+    # Create the vector storing the translations
+    translations = Vector{Vector{Float64}}(undef, 0)
+
+    # Increase the translations by one to adapt the scale to "1 to Ncells"
+    transx += 1
+    transy += 1
+
+    # Derive the direction of the shift along the first lattice vector
+    shift_x = 0
+    if transx ≤ boundary_cells
+        shift_x = 1
+    elseif (lattice.Ncellx - boundary_cells) < transx
+        shift_x = -1
+    end
+
+    # Derive the direction of the shift along the second lattice vector
+    shift_y = 0
+    if transy ≤ boundary_cells
+        shift_y = 1
+    elseif (lattice.Ncelly - boundary_cells) < transy
+        shift_y = -1
+    end
+
+    # Collect all needed translations
+    # An adsorbate within a corner of the lattice needs three periodic images
+    if shift_x != 0
+        push!(translations, shift_x * lattice.transcellvectors[:,1])
+    end
+    if shift_y != 0
+        push!(translations, shift_y * lattice.transcellvectors[:,2])
+    end
+    if shift_x != 0 && shift_y != 0
+        push!(translations, shift_x * lattice.transcellvectors[:,1] + shift_y * lattice.transcellvectors[:,2])
+    end
+
+    # Return the translations
+    return translations
+
+end

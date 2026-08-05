@@ -11,6 +11,7 @@ using Plots
 #
 # Include statements
 #
+include("analysis_helper.jl")
 
 #
 # Export statements
@@ -19,6 +20,8 @@ export plot_RSA_run
 export plot_single_molecule
 export animate_RSA_run
 export plot_count_area_histograms
+export plot_count_area_convergence
+export plot_single_run_convergence
 export plot_effective_gap_size
 export gif
 export savefig
@@ -27,6 +30,10 @@ export write_RSA_structures
 #
 # Definition of global variables
 #
+
+# Names of the metrics of a data set which are accepted by the analysis functions
+const statistics_property_names = ["means", "standarddeviations", "minvalues", "minvalue_ids", "maxvalues", "maxvalue_ids", "avgvalues", "avgvalue_ids"]
+const statistics_property_labels = ["Mean value", "Standard deviation", "Minimum value", "Run with the minimum value", "Maximum value", "Run with the maximum value", "Most average value", "Most average run"]
 
 #
 # Specific section for this file
@@ -55,11 +62,46 @@ function displaced_molecule_status(status, status_element, molecules, grids, lat
 
 end
 
+# A function to plot the points of all grids
+function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, silent = true, withmargins = false)
+    
+    # Define the image resolution
+    x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
+    y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
+    x_axis_resolution = x_axis_size * pixel_per_angstrom
+    y_axis_resolution = y_axis_size * pixel_per_angstrom
+    
+    if silent != true
+        println("Resolution: " * string(x_axis_resolution) * " x " * string(y_axis_resolution))
+    end
+
+    # Define color of grid points
+    grid_palette = palette(:darktest, Ngrids)
+
+    # Define the white space around the simulation cell
+    plot_margin, plot_framestyle, plot_ticks = simulation_cell_attributes(withmargins)
+
+    # Plot the grids
+    final_plot = 0
+    for grid_id in 1:Ngrids
+        if grid_id == 1
+            final_plot = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id], widen = false, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
+        else
+            scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id])
+        end
+    end
+
+    # Return the grid plot
+    return final_plot
+
+end
+
+
 # A function to plot all molecules on their selected gridpoints
 """
 
     plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice)
-    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true)
+    plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing, withmargins = false)
 
 Create an image of the surface covered by adsorbates.
 
@@ -75,121 +117,74 @@ Create an image of the surface covered by adsorbates.
 - `pixel_per_angstrom`: Resolution of the image controlled by the number of pixels for a distance of 1 angstrom as floating point number.
 - `boundary_cells`: Integer number of boundary cells used to plot periodic boundary conditions.
 - `silent`: Bool flag to request additional output statements.
+- `gridplot`: A prepared plot of the grid points to prevent the repeated generation of an identical background.
+- `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
 
 # Return values
 - A plots object of the covered surface.
 """
-function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true)
+function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing, withmargins = false)
 
-    # Define the image resolution
+    # Define the axes size
     x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
     y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
-    x_axis_resolution = x_axis_size * pixel_per_angstrom
-    y_axis_resolution = y_axis_size * pixel_per_angstrom
     
-    if silent != true
-        println("Resolution: " * string(x_axis_resolution) * " x " * string(y_axis_resolution))
-    end
-
-    # Define color of grid points
-    grid_palette = palette(:darktest, Ngrids)
-
-    # Plot the grids
-    final_plot = 0
-    for grid_id in 1:Ngrids
-        if grid_id == 1
-            final_plot = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id], widen = false)
-        else
-            scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id])
-        end
-    end
-    
-    #println("Number of grids: " * string(Ngrids))   
+    # A prepared plot of the grid points can be handed over to skip the generation of an identical background
+    if gridplot === nothing
+        final_plot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom, silent = silent, withmargins = withmargins)
+    else
+        final_plot = deepcopy(gridplot)
+    end 
     
     # Define color of molecule
-    molecule_palette = palette(:darktest, Nmolecules)    
+    molecule_palette = palette(:darktest, Nmolecules)
 
-    # Plot every molecule
+    # Define the marker size of every molecule type
+    markersize_per_molecule = Vector{Vector{Float64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        markersize_per_molecule[molecule_id] = Float64.(atomic_information[molecules[molecule_id].elements_sorted[:], 3]) * pixel_per_angstrom
+    end
+
+    # Create the vectors collecting the atoms of all adsorbates of every molecule type
+    x_coordinates = Vector{Vector{Float64}}(undef, Nmolecules)
+    y_coordinates = Vector{Vector{Float64}}(undef, Nmolecules)
+    markersizes = Vector{Vector{Float64}}(undef, Nmolecules)
+    for molecule_id in 1:Nmolecules
+        x_coordinates[molecule_id] = Vector{Float64}(undef, 0)
+        y_coordinates[molecule_id] = Vector{Float64}(undef, 0)
+        markersizes[molecule_id] = Vector{Float64}(undef, 0)
+    end
+
+    # Collect every molecule
     for element_id in axes(status, 2)
 
         # Get the displaced coordinates and elements
         molec_coords, displaced_coordinates, molec_elements, gridpoint_coords, molecule_id, grid_id, point_id = displaced_molecule_status(status, element_id, molecules, grids, lattice)
  
-        # Define the marker size
-        markersize_vector = atomic_information[molec_elements[:], 3] * pixel_per_angstrom 
+        # Add the adsorbate
+        append!(x_coordinates[molecule_id], displaced_coordinates[1,:])
+        append!(y_coordinates[molecule_id], displaced_coordinates[2,:])
+        append!(markersizes[molecule_id], markersize_per_molecule[molecule_id])
 
-        # Add to plot
-        scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-
-        # Check whether the adsorbate was within the boundary cells
+        # Check whether the adsorbate was within the boundary cells and add all needed periodic images
         transx, transy = grids[grid_id].mapping[2:3,point_id]
-        # Increase by one to adapt the scale to "1 to Ncells"
-        transx += 1
-        transy += 1
-        if transx ≤ boundary_cells
-            if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1] + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1] - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            else
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            end
-        elseif (lattice.Ncellx - boundary_cells) < transx
-            if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1] + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id]) 
-            elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1] - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            else
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,1]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            end
-        else
-            if transy ≤ boundary_cells
-                gridpoint_coords_moved = gridpoint_coords + lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            elseif (lattice.Ncelly - boundary_cells) < transy
-                gridpoint_coords_moved = gridpoint_coords - lattice.transcellvectors[:,2]
-                displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
-                scatter!(displaced_coordinates[1,:],displaced_coordinates[2,:], markersize = markersize_vector, markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
-            end
-        end
+        translations = boundary_translation_vectors(transx, transy, boundary_cells, lattice)
+        for translation_id in eachindex(translations)
+            gridpoint_coords_moved = gridpoint_coords + translations[translation_id]
+            displaced_coordinates = move_structure_to_point(molec_coords, gridpoint_coords_moved, [0.0, 0.0, 0.0], lattice.dimension)
+            append!(x_coordinates[molecule_id], displaced_coordinates[1,:])
+            append!(y_coordinates[molecule_id], displaced_coordinates[2,:])
+            append!(markersizes[molecule_id], markersize_per_molecule[molecule_id])
+         end
 
+    end
+
+    # Plot all adsorbates of every molecule type
+    for molecule_id in 1:Nmolecules
+        if isempty(x_coordinates[molecule_id])
+            continue
+        end
+        scatter!(final_plot, x_coordinates[molecule_id], y_coordinates[molecule_id], markersize = markersizes[molecule_id], markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
     end
 
     # Return final plot
@@ -201,7 +196,7 @@ end
 """
 
     animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice)
-    animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1)
+    animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0, withmargins = false)
 
 Create an animation of a RSA simulation.
 
@@ -216,15 +211,18 @@ Create an animation of a RSA simulation.
 # Optional input
 - `pixel_per_angstrom`: Resolution of the image controlled by the number of pixels for a distance of 1 angstrom.
 - `boundary_cells`: Number of boundary cells used to plot periodic boundary conditions.
+- `startstep`: First RSA step shown by the animation.
+- `laststep`: Last RSA step shown by the animation. A value of zero (default) requests all steps of the given stepinfo.
+- `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
 
 # Return values
 - A plots object containing the animation of the RSA simulation.
 
 # Hints
 - Generation of large animations is extremely slow.
-- Only reasonable to use for the initial ~1000 steps (with stepinfo[:,1:1000]).
+- Only reasonable to use for the a few thousand steps.
 """
-function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1)
+function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, startstep = 1, laststep = 0, withmargins = false)
 
     # Throw a warning in case the resolution is getting to large
     if pixel_per_angstrom > 10
@@ -234,38 +232,46 @@ function animate_RSA_run(stepinfo, Ngrids, grids, Nmolecules, molecules, lattice
         println("Hint to the user: Your pixel_per_angstrom has an extremely large value! The generation of the animation will be slow and you will get a large animation file. Consider reducing this value.")
     end
 
+    # Get the number of performed RSA steps
+    Nsteps = size(stepinfo,2)
+
+    # Define the range of steps to be animated
+    # A laststep of zero requests all steps of the given stepinfo
+    if laststep ≤ 0 || laststep > Nsteps
+        laststep = Nsteps
+    end
+    if startstep < 1
+        startstep = 1
+    end
+    if startstep > laststep
+        println("The first step of the animation (" * string(startstep) * ") is larger than the last step (" * string(laststep) * ").")
+        error("Animation Range Error")
+    end
+
     # Create the animation object
     anim = Animation()
 
+    # Create the plot of the grid points once and use it as the background of every frame
+    gridplot = plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = pixel_per_angstrom, withmargins = withmargins)
+
     # Preallocate matrices
     realsize = 0
-    Nframes = size(stepinfo,2)
-    status = Matrix{Int64}(undef, 4, Nframes)
+    status = Matrix{Int64}(undef, 4, Nsteps)
+
+    # Update the status matrix for all steps in front of the first frame
+    for step_id in 1:startstep-1
+        realsize = update_status_by_stepinfo!(status, realsize, stepinfo, step_id)
+    end
 
     # Create the frames
-    for frame_id in ProgressBar(1:Nframes)
+    for frame_id in ProgressBar(startstep:laststep)
 
-        # Get the information for this step
-        selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @view stepinfo[6:12, frame_id]
-        
-        # Update the status matrix
-        if selected_event_type == 1
-            realsize += 1
-            status[1:4,realsize] = [selected_molecule, selected_grid_type, selected_grid_point, selected_event]
-        elseif selected_event_type == 2
-            change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            status[4,change_column] = selected_event
-        elseif selected_event_type == 3
-            change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            status[2:4,change_column] = [selected_subevent, selected_event, selected_event_2]
-        elseif selected_event_type == 4
-            change_column = findfirst_column(status, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            status[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
-        end
+        # Get the information for this step and update the status matrix
+        realsize = update_status_by_stepinfo!(status, realsize, stepinfo, frame_id)
 
         # Create the frame
         substatus = @view status[1:4,1:realsize]
-        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true)
+        newframe = plot_RSA_run(substatus, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true, gridplot = gridplot, withmargins = withmargins)
 
         # Add the frame to the animation
         frame(anim, newframe)
@@ -392,197 +398,44 @@ function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, file_p
 
 end
 
-# A function to reduce the run information into a final status matrix
-function reduce_rsa_run_info(stepinfo)
-    
-    # Generate the empty matrix
-    maxsize = size(stepinfo, 2)
-    realsize = 0
-    reduced_info = Matrix{Int64}(undef, 4, maxsize)
-
-    # Update the matrix based on every performed rsa step
-    for info_id in axes(stepinfo, 2)
-
-        # Get the information for this step
-        selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2 = @view stepinfo[6:12, info_id]
-
-        # Update the reduced_info matrix
-        if selected_event_type == 1
-            realsize += 1
-            reduced_info[1:4,realsize] = [selected_molecule, selected_grid_type, selected_grid_point, selected_event]
-        elseif selected_event_type == 2
-            change_column = findfirst_column(reduced_info, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            reduced_info[4,change_column] = selected_event
-        elseif selected_event_type == 3
-            change_column = findfirst_column(reduced_info, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            reduced_info[2:4,change_column] = [selected_subevent, selected_event, selected_event_2]
-        elseif selected_event_type == 4
-            change_column = findfirst_column(reduced_info, [selected_molecule, selected_grid_type, selected_grid_point], 3)
-            reduced_info[1:4,change_column] = [selected_subevent, selected_grid_type, selected_grid_point, selected_event]
-        end
-
-    end
-
-    # Return the result
-    return reduced_info[:,1:realsize]
-
-end
-
-# A function to reduce the run information of all runs into a finals status matrix (using a rsa_run_results_struct object)
-function reduce_rsa_allrun_info!(Nruns, rsa_results)
-
-    # Loop over all runs
-    for run_id in 1:Nruns
-
-        # Get the status matrix
-        rsa_results[run_id].status = reduce_rsa_run_info(rsa_results[run_id].stepinfo)
-
-    end
-
-end
-
-# A function to count the number of adsorbates per run
-function count_adsorbates_per_rsa_run(Nruns, Nmolecules, rsa_results)
-    
-    # Allocate the count vector
-    run_adsorbate_count = Matrix{Int64}(undef, Nmolecules, Nruns)
-
-    # Loop over every RSA run
-    for run_id in 1:Nruns
-
-        # Generate the adsorbate count vector
-         adsorbate_count = zeros(Int64, Nmolecules)
-
-        # Count the occurence of any molecule in the status matrix
-        for molecule_id in 1:Nmolecules
-            adsorbate_count[molecule_id] = size(findall(x -> x == molecule_id, @view rsa_results[run_id].status[1,:]),1)
-        end
-
-        # Add to the final matrix
-        run_adsorbate_count[:, run_id] = adsorbate_count
-
-    end
-
-    # Return results
-    return run_adsorbate_count
-
-end
-
-# A function to calculate the surface area for every molecule of a molecules object
-function calculate_surface_area_molecules(Nmolecules, molecules; resolution = 0.01)
-
-    # Create the vector
-    molecules_area = Vector{Float64}(undef, Nmolecules)
-
-    # Loop over all molecules
-    for molecule_id in 1:Nmolecules
-        molecules_area[molecule_id] = calculate_surface_area(molecules[molecule_id].elements, molecules[molecule_id].coordinates, resolution = resolution)
-    end
-
-    # Return results
-    return molecules_area
-
-end
-
-# Function to calculate the covered surface based on the molecule
-function calculate_surface_area(molecule_elements, molecule_coords; resolution = 0.01)
-    
-    # Move the molecule to the center of the coordinate system
-    origin = [0.0, 0.0, 0.0]
-    centroid = calculate_centroid(molecule_coords)
-    dimension = size(molecule_coords,1)
-    moved_coords = move_structure_to_point(molecule_coords, origin, centroid, dimension)
-
-    # Get the radius of the molecule
-    Natoms = size(molecule_coords,2)
-    maxradius, radii = get_largest_vdW_distance_to_point(Natoms, molecule_elements, moved_coords, origin, "2D") 
-
-    # Loop over a grid and count the gridpoints covered by the molecule
-    # We add 2% to the radius to be on the save side
-    count = 0
-    for x_value in range(-1.02 * maxradius, 1.02 * maxradius, step = resolution)
-        for y_value in range(-1.02 * maxradius, 1.02 * maxradius, step = resolution)
-            point = [x_value, y_value]
-            covered = point_covered_by_vdW_radii_2D(molecule_elements, moved_coords, point)
-            if covered == true
-                count += 1
-            end
-
-        end
-    end
-
-    # Convert count to area
-    area = Float64(count) * resolution^2
-
-    # Return result
-    return area
-
-end
-
-# Function to derive gaussian distribution over a given vector of numbers
-# Returns mean and variance of the distribution as float
-function gaussian_distribution(data_vector; zerogaussian = false)
-    
-    # Number of values
-    Nvalues = size(data_vector,1)
-
-    # Calculate the mean value
-    if zerogaussian == false
-        mean = sum(data_vector) / Nvalues
-    else
-        mean = 0.0
-    end
-
-    # Calculate the variance
-    tmp_values = Float64.(deepcopy(data_vector))
-    tmp_values .-= mean
-    variance = sqrt(sum(abs2, tmp_values) / Nvalues)
-
-    return mean, variance
-
-end
-
 # A function to plot a histogram based on a given vector of numbers
-function plot_histogram(data_vector; labelx = "Value", labely = "Frequentness", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = 0.0)
+function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = 0.0, normalized = false)
 
-    # Derive properties of a normal distribution
+    # Derive all metrics of the data set
     if distribution == "truncated"
-        mean, variance = gaussian_distribution(data_vector, zerogaussian = true)
+        mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = calculate_data_set_metrics(data_vector; zerogaussian = true)
     elseif distribution == "gaussian"
-        mean, variance = gaussian_distribution(data_vector, zerogaussian = false)
+        mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id = calculate_data_set_metrics(data_vector; zerogaussian = false)
     else
-        mean, variance = 0.0, 0.0
-    end
-
-
-    # Get more data
-    #Nvalues = size(data_vector, 1)
-    minvalue, minvalue_id = findmin(data_vector)
-    maxvalue, maxvalue_id = findmax(data_vector)
-    if distribution == "truncated" || distribution == "gaussian"
-        avgvalue, avgvalue_id = findmin(abs.(data_vector .- mean))
-        avgvalue = data_vector[avgvalue_id]
-    else
+        mean, standarddeviation = 0.0, 0.0
+        minvalue, minvalue_id = findmin(data_vector)
+        maxvalue, maxvalue_id = findmax(data_vector)
         avgvalue, avgvalue_id = 0.0, 0
     end
 
-    # Plot the histogram
-    # normalize only works if minvalue and maxvalue differ
-    # TODO: That still doesn't look right...
-    if minvalue ≠ maxvalue
-        histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = :pdf, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+    # Define the bins of the histrogram
+    bins = range(minvalue, maxvalue, step = stepsize)
+
+    # Scale the gaussian distribution (to the area of the visible bins)
+    if normalized == true
+        plots_normalization = :pdf
+        gaussian_scaling = 1.0
     else
-        histo = histogram(data_vector, xlabel = labelx, ylabel = labely, xlims=(minvalue, maxvalue), legend=false, bins = range(minvalue, maxvalue, step = stepsize), dpi = resolution)
+        plots_normalization = :none
+        gaussian_scaling = gaussian_scaling_factor(data_vector, bins)
     end
+
+    # Plot the histogram
+    histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = plots_normalization, xlims=(minvalue, maxvalue), legend=false, bins = bins, dpi = resolution)
 
     # Add the normal distribution
     if distribution == "gaussian"
         x = range(minvalue, maxvalue, step = stepsize/10)
-        y = @. 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
+        y = @. gaussian_scaling * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
     elseif distribution == "truncated"
         x = range(minvalue, maxvalue, step = stepsize/10)
-        y = @. 2 * 1/(variance * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / variance^2) 
+        y = @. gaussian_scaling * 2 * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
     end
 
@@ -595,7 +448,7 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Frequentness", 
     if plotonly == true
         return histo
     else
-        return histo, mean, variance, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id
+        return histo, mean, standarddeviation, minvalue, minvalue_id, maxvalue, maxvalue_id, avgvalue, avgvalue_id
     end
     
 end
@@ -604,7 +457,7 @@ end
 """
 
     plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice)
-    plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0)
+    plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0, normalized = false)
 
 Create histograms counting the number of adsorbed molecules and the covered area. For every molecule type each histogram is generated. In addition, a final set of histograms is generated for all molecule types combined.
 
@@ -620,32 +473,16 @@ Create histograms counting the number of adsorbed molecules and the covered area
 - `plotonly`: Flag to request additional metrics.
 - `count`: Bin size for histogram showing molecule counts.
 - `area`: Bin size for histograms showing covered area.
+- `normalized`: Flag to normalize the histogram with Plots internals.
 
 # Return values
 - `plotonly = true (default)`: A vector of histograms is returned. Count and covered surface is contained pairwise for every molecule type while the second last element contains the total adsorbate count and the last element the total covered area.
-- `plotonly = false`: In addition to the histogram vector, vectors storing the mean values, variance, min and max values, as well as the simulation closest to the mean value are returned. In the following order: histograms, means, variances, minvalues, minvalue_ids, maxvalues, maxvalue_ids, averagevalues, averagevalue_ids.
+- `plotonly = false`: In addition to the histogram vector, vectors storing the mean values, standarddeviation, min and max values, as well as the simulation closest to the mean value are returned. In the following order: histograms, means, standarddeviations, minvalues, minvalue_ids, maxvalues, maxvalue_ids, averagevalues, averagevalue_ids.
 """
-function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0)
+function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, count = 1.0, area = 1.0, normalized = false)
 
-    # If the status is not present for all RSA runs recalculate the status
-    if status == false
-        reduce_rsa_allrun_info!(Nruns, rsa_results)
-    end
-
-    # Count the number of adsorbates per run
-    adsorbate_count_per_run = count_adsorbates_per_rsa_run(Nruns, Nmolecules, rsa_results)
-
-    # Calculate the are per molecule
-    molecules_area = calculate_surface_area_molecules(Nmolecules, molecules)
-
-    # Calculate the surface area
-    surface_area = norm(cross(lattice.transcellvectors[:,1], lattice.transcellvectors[:,2]))
-
-    # Generate the covered area per molecule per run (in %)
-    adsorbate_area_per_run = Matrix{Float64}(undef, Nmolecules, Nruns)
-    for run_id in 1:Nruns
-        adsorbate_area_per_run[:, run_id] = adsorbate_count_per_run[:, run_id] .* molecules_area / surface_area * 100
-    end
+    # Get the adsorbate count and the covered area (in %) of every run
+    adsorbate_count_per_run, adsorbate_area_per_run = calculate_count_area_per_run(Nruns, rsa_results, Nmolecules, molecules, lattice; status = status) 
 
     # Generate total adsorbate count per run
     total_adsorbate_count = sum(adsorbate_count_per_run, dims = 1)
@@ -659,7 +496,7 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
     else
         histos = Vector{Any}(undef, (Nmolecules * 2) + 2)
         means = Vector{Float64}(undef, (Nmolecules * 2) + 2)
-        variances = Vector{Float64}(undef, (Nmolecules * 2) + 2)
+        standarddeviations = Vector{Float64}(undef, (Nmolecules * 2) + 2)
         minvalues = Vector{Float64}(undef, (Nmolecules * 2) + 2)
         minvalue_ids = Vector{Int64}(undef, (Nmolecules * 2) + 2)
         maxvalues = Vector{Float64}(undef, (Nmolecules * 2) + 2)
@@ -674,30 +511,30 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
         plot_id = 0
         for molecule_id in 1:Nmolecules
             plot_id += 1
-            histos[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian")
+            histos[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
             plot_id += 1
-            histos[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian")
+            histos[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
         end
         
         plot_id += 1
-        histos[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian")
+        histos[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
         plot_id += 1
-        histos[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian")
+        histos[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = true, distribution = "gaussian", normalized = normalized)
 
     else
 
         plot_id = 0
         for molecule_id in 1:Nmolecules
             plot_id += 1
-            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian")
+            histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_count_per_run[molecule_id,:]; labelx = "Adsorbate count - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
             plot_id += 1
-            histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian")
+            histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(adsorbate_area_per_run[molecule_id,:]; labelx = "Covered area in % - molecule " * string(molecule_id), labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
         end
         
         plot_id += 1
-        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = "Normalized Frequentness", stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian")
+        histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_adsorbate_count[:]; labelx = "Adsorbate count", labely = histogram_label(normalized), stepsize = count, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
         plot_id += 1
-        histos[plot_id], means[plot_id], variances[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = "Normalized Frequentness", stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian")
+        histos[plot_id], means[plot_id], standarddeviations[plot_id], minvalues[plot_id], minvalue_ids[plot_id], maxvalues[plot_id], maxvalue_ids[plot_id], avgvalues[plot_id], avgvalue_ids[plot_id] = plot_histogram(total_area[:]; labelx = "Covered area in %", labely = histogram_label(normalized), stepsize = area, resolution = 600, plotonly = false, distribution = "gaussian", normalized = normalized)
 
     end
 
@@ -705,7 +542,7 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
     if plotonly == true
         return histos
     else
-        return histos, means, variances, minvalues, minvalue_ids, maxvalues, maxvalue_ids, avgvalues, avgvalue_ids
+        return histos, means, standarddeviations, minvalues, minvalue_ids, maxvalues, maxvalue_ids, avgvalues, avgvalue_ids
     end
 
 end
@@ -802,7 +639,7 @@ end
 """
 
     plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice)
-    plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true)
+    plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, normalized = false, withmargins = false)
 
 Create an image of the effective gap sizes as well as the histogram showing the frequency of all gap sizes.
 
@@ -819,13 +656,14 @@ Create an image of the effective gap sizes as well as the histogram showing the 
 - `gapsonly`: Flag to request a visualization of only the gaps (removing all adsorbates).
 - `withstroke`: Flag to add a stroke to the visualization of the gap sizes.
 - `plotonly`: Flag to request additional metrics.
-
+- `normalized`: Flag to normalize the histogram with Plots internals.
+- `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
 
 # Return values
 - `plotonly = true (default)`: Returns the histogram showing the frequency of all gap sizes and a plots object for the visualization of the gaps in the following order: histogram, plot.
 - `plotonly = false`: In addition to the default case, a vector containing the obtained effective gap sizes as well as a vector of the corresponding free grid point are returned. Information are returned in the following order: histogram, plot, gap sizes, free grid points.
 """
-function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0)
+function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0, normalized = false, withmargins = false)
 
     # Get the shells of every grid point
     neighbour_shell_list = create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice)
@@ -834,11 +672,11 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
     effective_gap_sizes, free_grid_points = calculate_effective_gap_size(status, neighbour_shell_list, Ngrids, grids, molecules, lattice; dim = 2)
     
     # Create the histogram of the effective gap sizes
-    gaps_histogram = plot_histogram(effective_gap_sizes; labelx = "Effective Gap Size in Å", labely = "Normalized Frequentness", stepsize = stepsize, threshold = threshold)
+    gaps_histogram = plot_histogram(effective_gap_sizes; labelx = "Effective Gap Size in Å", labely = histogram_label(normalized), stepsize = stepsize, threshold = threshold, normalized = normalized)
 
     # Get a plot of all adsorbates
     if gapsonly == false
-        plot_gaps = plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true)
+        plot_gaps = plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = pixel_per_angstrom, boundary_cells = 1, silent=true, withmargins = withmargins)
     end
 
     # Collect coordinates of free grid points
@@ -871,6 +709,9 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
         # Define color of grid points
         grid_palette = palette(:darktest, Ngrids)
 
+        # Define the white space around the simulation cell
+        plot_margin, plot_framestyle, plot_ticks = simulation_cell_attributes(withmargins)
+
         # Plot the grids
         #for grid_id in 1:Ngrids
         #    if grid_id == 1
@@ -882,9 +723,9 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
 
         # Add the gaps
         if withstroke == true
-            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 10 / pixel_per_angstrom, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey)
+            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 10 / pixel_per_angstrom, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         else
-            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 0, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey)
+            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 0, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         end
 
     end
@@ -1136,5 +977,193 @@ function calculate_effective_gap_size(status, neighbour_shell_list, Ngrids, grid
 
     # Return the distance list
     return effective_gap_sizes, free_grid_points
+
+end
+
+# A function to plot the convergence of the metrics of the count and area histograms with the number of RSA runs
+"""
+
+    plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice)
+    plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, properties = ["means", "standarddeviations"], stride = 1, reference = true, resolution = 600)
+
+Create plots showing the convergence of the metrics with the number of RSA simulations.  
+
+
+# Input
+- `Nruns`: Total number of RSA simulations.
+- `rsa_results`: A rsa_run_results_struct object.
+- `Nmolecules`: Number of present molecule types.
+- `molecules`: A molecule_struct object.
+- `lattice`: A lattice_struct object.
+
+# Optional input
+- `status`: Flag forcing the recalculation of the status based on the stepinfo field.
+- `plotonly`: Flag to request the plotted data in addition to the plots.
+- `properties`: Vector of the metrics to be plotted. Accepted values are "means", "standarddeviations", "minvalues", "minvalue\\_ids", "maxvalues", "maxvalue\\_ids", "avgvalues", and "avgvalue\\_ids".
+- `stride`: Number of runs added between two evaluations of the metrics. The final evaluation always includes all runs.
+- `reference`: Flag to add the value obtained with all RSA runs as a dashed horizontal line.
+- `resolution`: Resolution of the images controlled by the dpi value.
+
+# Return values
+- `plotonly = true (default)`: A matrix of plots. First index indicates the plotted molecule (area or count) while second index follows the order of the requested properties.
+- `plotonly = false`: In addition to the matrix of plots, the vector of the evaluated numbers of runs and the plotted values are returned. The values are given as a vector over the data sets, with every element being a matrix of the evaluated numbers of runs in rows and the requested properties in columns. Information are returned in the following order: plots, numbers of runs, values.
+"""
+function plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, lattice; status = true, plotonly = true, properties = ["means", "standarddeviations"], stride = 1, reference = true, resolution = 600)
+
+    # Get the adsorbate count and the covered area (in %) of every run
+    adsorbate_count_per_run, adsorbate_area_per_run = calculate_count_area_per_run(Nruns, rsa_results, Nmolecules, molecules, lattice; status = status)
+
+    # Collect all data sets to be evaluated
+    data_sets, data_labels = collect_count_area_data_sets(Nmolecules, adsorbate_count_per_run, adsorbate_area_per_run)
+    Nsets = size(data_sets, 1)
+
+    # Map the requested properties to their position within the metrics of a data set
+    Nproperties = size(properties, 1)
+    property_ids = Vector{Int64}(undef, Nproperties)
+    for property_id in 1:Nproperties
+        property_ids[property_id] = statistics_property_id(properties[property_id])
+    end
+
+    # Define the numbers of runs to be evaluated
+    # The last evaluation always includes all runs
+    Nruns_values = collect(stride:stride:Nruns)
+    if isempty(Nruns_values) || last(Nruns_values) != Nruns
+        push!(Nruns_values, Nruns)
+    end
+    Npoints = size(Nruns_values, 1)
+
+    # Evaluate the metrics for an increasing number of runs
+    convergence_data = Vector{Matrix{Float64}}(undef, Nsets)
+    for set_id in 1:Nsets
+
+        # Generate the matrix storing the requested properties of this data set
+        convergence_data[set_id] = Matrix{Float64}(undef, Npoints, Nproperties)
+
+        # Loop over all numbers of runs
+        for point_id in 1:Npoints
+
+            # Derive all metrics of the first N runs
+            metrics = calculate_data_set_metrics(@view data_sets[set_id][1:Nruns_values[point_id]])
+
+            # Store the requested properties
+            for property_id in 1:Nproperties
+                convergence_data[set_id][point_id, property_id] = Float64(metrics[property_ids[property_id]])
+            end
+
+        end
+
+    end
+
+    # Plot the convergence: One plot for every combination of data set and property
+    convergence_plots = Matrix{Any}(undef, Nsets, Nproperties)
+    for set_id in 1:Nsets
+        for property_id in 1:Nproperties
+
+            # Plot the property against the number of included runs
+            convergence_plots[set_id, property_id] = plot(Nruns_values, convergence_data[set_id][:, property_id], xlabel = "Number of RSA runs", ylabel = statistics_property_labels[property_ids[property_id]] * " - " * data_labels[set_id], legend = false, width = 2, dpi = resolution)
+
+            # Add the value obtained with all runs as a reference
+            if reference == true
+                hline!(convergence_plots[set_id, property_id], [convergence_data[set_id][Npoints, property_id]], linestyle = :dash, linecolor = :red, linewidth = resolution/300)
+            end
+
+        end
+    end
+
+    # Return results
+    if plotonly == true
+        return convergence_plots
+    else
+        return convergence_plots, Nruns_values, convergence_data
+    end
+
+end
+
+# A function to plot the convergence of properties of a single RSA run
+"""
+
+    plot_single_run_convergence(stepinfo, Nmolecules, molecules, lattice)
+    plot_single_run_convergence(stepinfo, Nmolecules, molecules, lattice; errorrange = 0.0, startstep = 1, laststep = 0, plotonly = true, resolution = 600)
+
+Create a plot showing the convergence of adsorbate count and covered area of a single RSA simulation with the number of performed RSA steps.
+
+# Input
+- `stepinfo`: A stepinfo field of a rsa_run_results_struct.
+- `Nmolecules`: Number of present molecule types.
+- `molecules`: A molecule_struct object.
+- `lattice`: A lattice_struct object.
+
+# Optional input
+- `errorrange`: Range in % which is added to and subtracted from the final value of every property. The resulting range is highlighted within the plot. A value of zero (default) requests no range.
+- `startstep`: First RSA step shown by the plot.
+- `laststep`: Last RSA step shown by the plot. A value of zero (default) requests all steps of the given stepinfo.
+- `plotonly`: Flag to request the plotted data in addition to the plot.
+- `resolution`: Resolution of the image controlled by the dpi value.
+
+# Return values
+- `plotonly = true (default)`: A vector containing the plots for each adsorbate and all adsorbates together.
+- `plotonly = false`: In addition to the plots, a vector containing the ploted data as well as a vector stating at which step convergence is reached are returned.
+"""
+function plot_single_run_convergence(stepinfo, Nmolecules, molecules, lattice; errorrange = 0.0, startstep = 1, laststep = 0, plotonly = true, resolution = 600)
+
+    # Get the number of performed RSA steps
+    Nsteps = size(stepinfo, 2)
+
+    # Define the range of steps to be plotted
+    # A laststep of zero (default) requests all steps of the given stepinfo
+    if laststep ≤ 0 || laststep > Nsteps
+        laststep = Nsteps
+    end
+    if startstep < 1
+        startstep = 1
+    end
+    if startstep > laststep
+        println("The first plotted step (" * string(startstep) * ") is larger than the last plotted step (" * string(laststep) * ").")
+        error("Analysis Range Error")
+    end
+
+    # Get the count and area per step
+    count_per_step, area_per_step = calculate_count_area_per_step(Nsteps, stepinfo, Nmolecules, molecules, lattice)
+
+    # Collect all data sets to be plotted
+    data_sets, data_labels = collect_count_area_data_sets(Nmolecules, count_per_step, area_per_step; capital = true)
+    Nsets = size(data_sets, 1)
+
+    # Plot the convergence: One plot for every data set
+    convergence_plots = Vector{Any}(undef, Nsets)
+    convergence_steps = zeros(Int64, Nsets)
+    for set_id in 1:Nsets
+
+        # The bare plot
+        convergence_plot = plot(xlabel = "RSA step", ylabel = data_labels[set_id], legend = false, dpi = resolution)
+
+        # Add an error range if requested
+        if errorrange > 0.0
+            
+            # Define the range based on the final value of the property
+            finalvalue = data_sets[set_id][Nsteps]
+            lowervalue = finalvalue * (1.0 - errorrange/100)
+            uppervalue = finalvalue * (1.0 + errorrange/100)
+
+            # Highlight the range over the complete range of plotted steps
+            plot!(convergence_plot, [startstep, laststep], [lowervalue, lowervalue], fillrange = [uppervalue, uppervalue], fillalpha = 0.2, fillcolor = :grey, linewidth = 0)
+
+            # Get the first step from which the property stays within the range
+            convergence_steps[set_id] = find_convergence_step(data_sets[set_id], lowervalue, uppervalue)
+
+        end
+
+        # Plot the data
+        plot!(convergence_plot, [startstep:laststep], data_sets[set_id][startstep:laststep], width = 2)
+        convergence_plots[set_id] = convergence_plot
+
+    end
+
+    # Return results
+    if plotonly == true
+        return convergence_plots
+    else
+        return convergence_plots, data_sets, convergence_steps
+    end
 
 end
