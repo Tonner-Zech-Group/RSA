@@ -1060,7 +1060,7 @@ function plot_count_area_convergence(Nruns, rsa_results, Nmolecules, molecules, 
         for property_id in 1:Nproperties
 
             # Plot the property against the number of included runs
-            convergence_plots[set_id, property_id] = plot(Nruns_values, convergence_data[set_id][:, property_id], xlabel = "Number of RSA runs", ylabel = statistics_property_labels[property_ids[property_id]] * " - " * data_labels[set_id], legend = false, width = 2, dpi = resolution)
+            convergence_plots[set_id, property_id] = plot(Nruns_values, convergence_data[set_id][:, property_id], xlabel = "Number of RSA runs", ylabel = statistics_property_labels[property_ids[property_id]] * "\n" * data_labels[set_id], legend = false, width = 2, dpi = resolution)
 
             # Add the value obtained with all runs as a reference
             if reference == true
