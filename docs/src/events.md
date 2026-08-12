@@ -9,6 +9,10 @@ Events [Block-Keyword]
   coverageconvergence [Integer-Keyword]
   forceadsorption [Integer-Keyword]
   overlap [Text-Keyword]
+  
+  restart [Integer-Keyword]
+  restartruns [Text-Keyword]
+  restartfile [Text-Keyword]
 
   eventlist [Block-Keyword]
     ... one event per line
@@ -36,6 +40,18 @@ The following list states all keywords of the events block with their default va
     This keyword defines how the overlap between two molecules is defined:
     + `2D` : The van der Waals spheres of the atoms are projected in two dimensions to judge the overlap between adsorbates. This is the default approach in most RSA simulations.
     + `3D` : The overlap between the van der Waals spheres of the atoms is tested in three dimensions. This setting can only be used in case all coordinates (molecules, lattice, grids) are stated with three dimensions. 
+
+* `restart = 0`
+
+    This keyword indicates whether RSA simulations should be performed starting with a provided seed (`restart > 0`). With this keyword the set - also called generation - of RSA simulations to be used is selected. The generation used to create the initial HDF5 file is the 1st generation while each restart based on this HDF5 file is labeled as 2nd, 3rd, etc generation.   
+
+* `restartruns = ...`
+
+    No default value defined. With this keyword the individual RSA simulations within a generation are selected. The numbers of the individual runs must be separated by spaces. For each selected simulation, the user requested number of new restart runs will be performed.
+
+* `restartfile = ...`
+
+    No default value defined. For restart calculations the HDF5 file of the previous calculation must be provided. The absolut path to this file is stated with this keyword.
 
 * `eventlist ... end`
 

@@ -18,12 +18,6 @@ savefig(myplot, "RSA_run_352.png")
 ```
 Default functions for plotting RSA runs, evaluating the covered area, and calculating the effective gap size are provided in the [Analysis](@ref) section. 
 
-## Using Multithreading with VSCode
-Running RSA simulations over VSCode in parallel is possible by changing the "julia.NumThreads" setting. Simply search for "num thread" in the settings searchbar and change to your needs. 
-To test the new settings use the following command in your notebook:
-```
-Threads.nthreads()
-```
 
 ## Exported Functions
 
@@ -40,6 +34,8 @@ plot_single_molecule
 animate_RSA_run
 plot_count_area_histograms
 plot_effective_gap_size
+plot_count_area_convergence
+plot_single_run_convergence
 ```
 
 ## Datastructure
