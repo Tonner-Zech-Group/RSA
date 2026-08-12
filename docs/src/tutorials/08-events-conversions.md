@@ -3,8 +3,6 @@
 !!! info "Learning Goals"
     * Combine conversion and diffusion events to mimic reactions 
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## Input File Setup 
 

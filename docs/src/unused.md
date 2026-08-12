@@ -4,3 +4,8 @@ To test the new settings use the following command in your notebook:
 ```
 Threads.nthreads()
 ```
+
+
+# Was in every tutorial
+!!! tip
+    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.

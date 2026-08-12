@@ -4,8 +4,6 @@
     * Benchmark simulation cell size
     * Benchmark impact of rotation steps
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## General
 Every RSA simulation contains two important choices: The size of the unit cell as well as the number of rotations for every adsorbate. While the cell size can be adjusted based on a requested accuracy, the number of rotations should be motivated by the physics of the modeled system. Examples are small rotation steps for adsorbates that are considered to be freely rotating, a step size of 60° or 120° if an adsorbate is adapting to the symmetry of a Cu(111) surface, or even values of 180° or 360° (0°) if the adsorbate is assumend to be static. The value and number of valid rotations is therefore benchmarked to gain information on the sensitivity of the RSA simulations to this value.

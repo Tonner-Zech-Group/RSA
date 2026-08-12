@@ -5,8 +5,6 @@
     * Adjust input settings for "infinite" simulations
     * Evaluate conversion events 
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## Input File Setup 
 

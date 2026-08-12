@@ -4,8 +4,6 @@
     * Run simple RSA simulations: Aniline on Cu(111)
     * Basic evaluations
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## Input File Setup    
 For the most simple RSA simulations two input files are needed: The coordinates of the adsorbate and the main input file of the RSA simulation. We will work with aniline as our adsorbate in this tutorial, so please save the following coordinates in an xyz file:

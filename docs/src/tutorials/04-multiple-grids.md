@@ -4,8 +4,6 @@
     * Set up simulations with two or more grids
     * Basic evalution of those simulations
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## Input File Setup   
 The previous tutorial was based on working with multiple adsorbates. However, different adsorbates do not always prefer the same adsorption sites. Therefore, multiple grids are necessasry to offer different adsorption sites. In this tutorial we will work with methanesulfonic acid (MSA) and pyrrole as our adsorbates as these molecules prefer to adsorb at the hollow and on-top site, respectively. Create xyz files with the provided coordinates:
