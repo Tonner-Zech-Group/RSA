@@ -5,12 +5,10 @@
     * Adjust input settings for "infinite" simulations
     * Evaluate conversion events 
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## Input File Setup 
 
-For this tutorial you can use the coordinates of Pyridine from the [Molecule Library](@ref). The largest part of the main input file is identical to previous tutorials: 
+For this tutorial you can use the coordinates of pyridine from the [Molecule Library](@ref). The largest part of the main input file is identical to previous tutorials: 
 ```
 # Adsorption on Cu(111)
 Molecule

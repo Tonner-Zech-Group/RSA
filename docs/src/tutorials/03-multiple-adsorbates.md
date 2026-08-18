@@ -4,8 +4,6 @@
     * Set up simulations with two or more adsorbates
     * Basic evalution of those simulations
 
-!!! tip
-    Keep in mind that you can speed up simulations by using multiple threads as described in the [Using Multithreading with VSCode](@ref) section.
 
 ## Input File Setup
 Some simulations work with several adsorbates *simultanously*. In this case, every adsorbate must be provided by its own xyz file. In this tutorial we will use pyridine in its upright and tilted conformation as an example. Use the following coordinates to create two xyz files:   

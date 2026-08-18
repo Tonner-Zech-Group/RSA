@@ -1,7 +1,7 @@
 # About RSA 
 As the name indicates *random sequential adsorption* or simply *RSA* simulations are mainly used to model adsorption events whereby the behaviour of the adsorbates is assumed to be random. This is a crude approximation but still somewhat valid for weakly interacting adsorbates. 
 
-Within the area-selective deposition, a core research question is to judge how well a surface - usualle called the *non-growth surface* - can be shielded or blocked by an adsorbate. Here, RSA simulations can help to derive an model for the blocking layer formed by the adsorbates. Furthermore, a first guess of how large the remaining gaps are can be derived.  
+Within the area-selective deposition, a core research question is to judge how well a surface - usualle called the *non-growth surface* - can be shielded or blocked by an adsorbate. Here, RSA simulations can help to derive a model for the blocking layer formed by the adsorbates. Furthermore, a first guess of how large the remaining gaps are can be derived.  
 
 In addition to the presence of adsorption events, this RSA package also includes the possibility of rotation, diffusion, and conversion events. Thereby, the present algorithm is slightly moving in the direction of a light version of a kinetic Monte-Carlo (kMC) algorithm.
 

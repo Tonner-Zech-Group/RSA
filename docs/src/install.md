@@ -28,7 +28,7 @@ Pkg.activate()
 ```
 
 ## Using the RSA package
-You can use the RSA package in any of your scripts without activating the project (this would only be necessary if you want to contribute to the development of the package). Simply add the package directory to the *LOAD_PATH*:
+You can use the RSA package in any of your scripts by adding the package directory to the *LOAD_PATH*:
 ```
 push!(LOAD_PATH,"/PATH/to/source/code/RSA")
 using RSA
@@ -36,4 +36,9 @@ using RSA
 To test whether the module was loaded you can use the following command in the Julia REPL:
 ```
 ?RSA
+```
+As alternative, you can register the package with the package manager. That step would only be necessary the first time you want to use the RSA package.
+```
+using Pkg
+Pkg.develop(path="/Path/to/RSA")
 ```

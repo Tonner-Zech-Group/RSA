@@ -4,7 +4,7 @@ A *Random Sequential Adsorption (RSA)* package for the modelling of molecular ad
 
 ## Features
 * Random adsorption of adsorbates on a surface grid
-* Support of multiple adsorbates and surface grids
+* Support of multiple adsorbates and surface grids (both simultanously & sequentially)
 * Support of diffusion and rotation events
 * Support of adsorbate conversion events
 * Analysis of surface coverage and effective gap size
