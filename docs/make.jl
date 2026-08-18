@@ -7,7 +7,7 @@ molecule_subsection_acids = ["systems/2026-methanesulfonicacid.md"]
 molecule_subsection_thiols = ["systems/2026-diethylsulfide.md", "systems/2026-diisopropylsulfide.md", "systems/2026-dipropylsulfide.md"]
 molecule_subsections_cyclic = ["systems/2026-aniline.md", "systems/2026-pyridine.md", "systems/2026-pyrrole.md"]
 surface_subsection = ["systems/2026-Cu.md", "systems/2026-SiO2.md"]
-tutorial_subsection = ["tutorials/01-adsorption-stochastics.md", "tutorials/02-benchmarks.md", "tutorials/03-multiple-adsorbates.md", "tutorials/04-multiple-grids.md", "tutorials/05-events-rotations.md", "tutorials/06-events-diffusions.md", "tutorials/07-events-conformer-changes.md", "tutorials/08-events-conversions.md", "tutorials/09-hdf5.md"]
+tutorial_subsection = ["tutorials/01-adsorption-stochastics.md", "tutorials/02-benchmarks.md", "tutorials/03-multiple-adsorbates.md", "tutorials/04-multiple-grids.md", "tutorials/05-events-rotations.md", "tutorials/06-events-diffusions.md", "tutorials/07-events-conformer-changes.md", "tutorials/08-events-conversions.md", "tutorials/09-hdf5.md", "tutorials/10-restarting.md"]
 
 # Local non-ideal solution
 #makedocs(sitename="RSA.jl", remotes=nothing,

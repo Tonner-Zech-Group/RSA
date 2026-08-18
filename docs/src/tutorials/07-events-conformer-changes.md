@@ -8,7 +8,7 @@
 
 ## Input File Setup 
 
-For this tutorial you can use the coordinates of Pyridine from the [Molecule Library](@ref). The largest part of the main input file is identical to previous tutorials: 
+For this tutorial you can use the coordinates of pyridine from the [Molecule Library](@ref). The largest part of the main input file is identical to previous tutorials: 
 ```
 # Adsorption on Cu(111)
 Molecule
