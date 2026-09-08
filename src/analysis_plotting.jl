@@ -399,7 +399,7 @@ function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, file_p
 end
 
 # A function to plot a histogram based on a given vector of numbers
-function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = 0.0, normalized = false)
+function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = Vector{Float64}(undef, 0), normalized = false)
 
     # Derive all metrics of the data set
     if distribution == "truncated"
@@ -440,8 +440,8 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
     end
 
     # Add a vertical line if requested
-    if threshold > 0.0
-        vline!([threshold], linestyle = :dash, linecolor = :red, linewidth = resolution/200)
+    for ele in threshold
+        vline!([ele], linestyle = :dash, linecolor = :red, linewidth = resolution/200)
     end
 
     # Return all results
@@ -658,12 +658,13 @@ Create an image of the effective gap sizes as well as the histogram showing the 
 - `plotonly`: Flag to request additional metrics.
 - `normalized`: Flag to normalize the histogram with Plots internals.
 - `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
+- `threshold`: Flag to add threshold values to be marked in the histogram. Values specified in a vector.
 
 # Return values
 - `plotonly = true (default)`: Returns the histogram showing the frequency of all gap sizes and a plots object for the visualization of the gaps in the following order: histogram, plot.
 - `plotonly = false`: In addition to the default case, a vector containing the obtained effective gap sizes as well as a vector of the corresponding free grid point are returned. Information are returned in the following order: histogram, plot, gap sizes, free grid points.
 """
-function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0, normalized = false, withmargins = false)
+function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = Vector{Float64}(undef, 0), normalized = false, withmargins = false)
 
     # Get the shells of every grid point
     neighbour_shell_list = create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice)
