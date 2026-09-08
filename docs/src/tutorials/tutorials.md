@@ -37,6 +37,7 @@ Depth = 1
 ```@contents
 Pages = [
          "09-hdf5.md"
+         "10-restarting.md"
         ]
 Depth = 1
 ```
