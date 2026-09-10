@@ -414,7 +414,7 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
     end
 
     # Define the bins of the histrogram and the limits of the x axis
-    if Abs(maxvalue - minvalue) < stepsize
+    if abs(maxvalue - minvalue) < stepsize
         bins = range(minvalue - stepsize / 2, maxvalue + stepsize / 2, length = 2)
         lowerlimit = minvalue - 3 * stepsize / 2
         upperlimit = maxvalue + 3 * stepsize / 2
@@ -437,11 +437,11 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
     histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = plots_normalization, xlims=(lowerlimit, upperlimit), legend=false, bins = bins, dpi = resolution)
 
     # Add the normal distribution
-    if distribution == "gaussian" && standarddeviation > 0.0
+    if distribution == "gaussian" && standarddeviation > 1.0e-10
         x = range(lowerlimit, upperlimit, step = stepsize/10)
         y = @. gaussian_scaling * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
-    elseif distribution == "truncated" && standarddeviation > 0.0
+    elseif distribution == "truncated" && standarddeviation > 1.0e-10
         x = range(lowerlimit, upperlimit, step = stepsize/10)
         y = @. gaussian_scaling * 2 * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
