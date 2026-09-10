@@ -1047,6 +1047,9 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     # Read the hdf5 file
     origin_rsa_results, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice, origin_events = read_hdf5_output_file(events.restart_file, events.restart_generation)
 
+    # Resolve the requested origin runs
+    resolve_restart_runs!(events, origin_rsa_results)
+
     # Check the molecule, grid, and lattice information
     validate_restart_compatibility(Nmolecules, molecules, Ngrids, grids, lattice, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice)
     

@@ -47,7 +47,7 @@ The following list states all keywords of the events block with their default va
 
 * `restartruns = ...`
 
-    No default value defined. With this keyword the individual RSA simulations within a generation are selected. The numbers of the individual runs must be separated by spaces. For each selected simulation, the user requested number of new restart runs will be performed.
+    No default value defined. With this keyword the individual RSA simulations within a generation are selected. The numbers of the individual runs must be separated by spaces. For each selected simulation, the user requested number of new restart runs will be performed. A negative run number (e.g. `restartruns = -1`) selects all runs of the chosen generation.
 
 * `restartfile = ...`
 

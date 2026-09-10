@@ -1174,6 +1174,33 @@ function seed_adsorbate_grids!(molecules, restart_runs, origin_rsa_results)
 
 end
 
+# A function to resolve the origin runs requested for a restart calculation
+# A negative run number selects all runs of the selected generation
+function resolve_restart_runs!(events, origin_rsa_results)
+
+    # Get the number of runs available in the selected generation
+    Norigin_runs = length(origin_rsa_results)
+
+    # Replace the selection by all available runs in case a negative run number is given
+    if any(<(0), events.restart_runs)
+        events.restart_runs = collect(1:Norigin_runs)
+        return events
+    end
+
+    # Check that every selected run is available in the selected generation
+    for origin_id in events.restart_runs
+        if origin_id < 1 || origin_id > Norigin_runs
+            println("The following restart run is not available in generation " * string(events.restart_generation) * ": " * string(origin_id))
+            println("The selected generation contains " * string(Norigin_runs) * " runs.")
+            error("Restart Error")
+        end
+    end
+
+    # Return new event struct
+    return events
+
+end
+
 # A function to check the molecule, grid, and lattice information in a restart calculation
 function validate_restart_compatibility(Nmolecules, molecules, Ngrids, grids, lattice, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice)
 
