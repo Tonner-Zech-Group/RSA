@@ -412,3 +412,91 @@ function find_convergence_step(values, lowervalue, uppervalue)
     end
 
 end
+
+# A function generating shell lists for every unique grid point
+# The tolerance is multiplied with the largest molecule radius to define the shell size
+function create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice; tolerance = 1.05)
+
+    # Create the vector of vectors to store the shells
+    # Grid --> Unique point --> Grid --> Shells --> Points
+    neighbour_shell_list = Vector{Vector{Vector{Vector{Vector{Int64}}}}}(undef, Ngrids)
+    for grid_A_id in 1:Ngrids
+        neighbour_shell_list[grid_A_id] = Vector{Vector{Vector{Vector{Int64}}}}(undef, grids[grid_A_id].Nuniquepoints)
+        for unique_id in 1:grids[grid_A_id].Nuniquepoints
+            neighbour_shell_list[grid_A_id][unique_id] = Vector{Vector{Vector{Int64}}}(undef, Ngrids)
+        end
+    end
+
+    # Get the largest radius of any molecule
+    radius = 0.0
+    for molecule_id in 1:Nmolecules
+        if molecules[molecule_id].maxradius > radius
+            radius = molecules[molecule_id].maxradius
+        end
+    end
+
+    # Add the tolerance to this radius
+    radius *= tolerance
+
+    # Loop over all grids
+    for grid_A_id in 1:Ngrids
+
+        # Loop over all unique points
+        for unique_id in 1:grids[grid_A_id].Nuniquepoints
+
+            # Get the current unique point
+            upoint = @view grids[grid_A_id].uniquepoints[:, unique_id]
+
+            # Loop over all grids
+            for grid_B_id in 1:Ngrids
+
+                # Calculate the distance vectors between the unique point and all points of this grid
+                distance_vectors =  grids[grid_B_id].points .- upoint
+
+                # Correct by minimum image convention
+                corrected_distance_vectors = apply_minimum_image_convention(distance_vectors, lattice.cellvectors, lattice.inversevectors)
+
+                # Get the distances
+                distances = vec(sqrt.(sum(abs2, corrected_distance_vectors, dims = 1)))
+
+                # Sort the distances for increasing distances
+                sorted_index = sortperm(distances)
+
+                # Create the sorted distances
+                sorted_distances = distances[sorted_index]
+
+                # Define empty vector to store shells
+                shells_vector = Vector{Vector{Int64}}(undef, 0)
+
+                # Loop over the sorted distances and add them to shells based on the distance
+                # In case both grids are identical: Skip the first entry as this is always the point itself (with a distance of zero)
+                if grid_A_id == grid_B_id
+                    start_id = 2
+                else
+                    start_id = 1
+                end
+                shell = 1
+                for distance_id in 2:grids[grid_B_id].Npoints
+                    if sorted_distances[distance_id] > shell * radius
+                        push!(shells_vector, sorted_index[start_id:distance_id-1])
+                        start_id = distance_id
+                        shell += 1
+                    end
+                end
+                
+                # Add the last block to the shell vector
+                push!(shells_vector, sorted_index[start_id:grids[grid_B_id].Npoints])
+
+                # Add the shell vector to the final vector
+                neighbour_shell_list[grid_A_id][unique_id][grid_B_id] = shells_vector
+
+            end
+
+        end
+
+    end
+
+    # Return the result
+    return neighbour_shell_list
+
+end

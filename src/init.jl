@@ -442,8 +442,8 @@ function check_for_overlap(molecule_coords_A, molecule_coords_B, molecule_elemen
             # Calculate distance (Difference --> convert to fractional --> check pbc --> convert back --> distance)
             difference = molecule_coords_A[:,a] - molecule_coords_B[:,b]
             
-            # Apply pbc
-            difference = apply_pbc_to_coordinates(difference, fulllattice, invfulllattice)
+            # Apply minimum image convention
+            difference = apply_minimum_image_convention(difference, fulllattice, invfulllattice)
 
             # Calculate distance
             distance = norm(difference[1:2])
@@ -525,8 +525,9 @@ function check_for_atom_overlap(points_difference_vector, points_difference, mol
             sum_vdw = vdw_1 + vdw_2
 
             # Calculate the difference between the atoms (vector in fractional coordinates)
+            # Use minimum image convention to get the shortest distance
             fractional_distance_vector = points_difference_vector + rotation_difference_matrix[atom_1_id,atom_2_id]
-            cartesian_distance_vector = apply_pbc_to_fractional_coordinates(fractional_distance_vector, lattice.transcellvectors)
+            cartesian_distance_vector = minimum_image_from_fractional_coordinates(fractional_distance_vector, lattice.transcellvectors)
             # Only consider the distance in plane for RSA
             if overlap_2d
                 atoms_distance = norm(cartesian_distance_vector[1:2])
@@ -873,10 +874,11 @@ function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids,
 
                                 # Prescreening: Distance between gridpoints vs. molecular radius
                                 # the translation_distance_vectors for the "point_id" is not needed as this is always a unique point and the distance vector therefor euqal to zero
+                                # Use minimum image convention to get the shortest distance between the two gridpoints
                                 mapping = grids[Tgrid_id].mapping[:,Tpoint_id]
                                 fractional_points_difference_vector = unit_cell_gridpoints_difference[grid_id,Tgrid_id][point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                                cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
+                                cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
 
                                 if overlap_2d
                                     points_difference = norm(cartesian_points_difference_vector[1:2])
@@ -1027,10 +1029,11 @@ function create_neighbour_list(Nmolecules, Ngrids, rate_constants_info, lattice,
                         end
 
                         # Get the distance between the grid points
+                        # Use minimum image convention to get the shortest distance between the two gridpoints
                         mapping = grids[end_grid_id].mapping[:,end_point_id]
                         fractional_points_difference_vector = unit_cell_gridpoints_difference[start_grid_id,end_grid_id][start_point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                        cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
+                        cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
 
                         if overlap_2d
                             distance = norm(cartesian_points_difference_vector[1:2])
