@@ -253,7 +253,7 @@ end
 function map_affected_grid_points_to_actual_points(Affected_Points_Rotations, molecule_id, grid_id, unique_point_id, rotation_id, grids, lattice, reference_transx, reference_transy)
 
     # Generate a copy of the unique affected points
-    mapped_points = deepcopy(Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id])
+    mapped_points = copy(Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id])
 
     # Map all unique values to the actual values
     for point_id in axes(mapped_points,2)
@@ -307,6 +307,18 @@ end
 function present_column(matrix::Matrix{Int64}, column::Vector{Int64}, subset::UnitRange{Int64})
     for column_id in axes(matrix,2)
         if column == @view matrix[subset,column_id]
+            return true
+        end
+    end
+    return false
+end
+
+# A function to test whether a four-row matrix contains a given column.
+# Allocation-free version of the present_column function for a four-row matrix.
+@inline function contains_column(matrix, value_1, value_2, value_3, value_4)
+    for column_id in axes(matrix, 2)
+        if matrix[1, column_id] == value_1 && matrix[2, column_id] == value_2 &&
+           matrix[3, column_id] == value_3 && matrix[4, column_id] == value_4
             return true
         end
     end

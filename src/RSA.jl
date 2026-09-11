@@ -288,6 +288,9 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         dif_rotation = rsa_gridpoints[dif_grid][dif_point].adsorbed_rotation
         dif_target_points = rsa_gridpoints[dif_grid][dif_point].target_diffusion[dif_ads_molecule]
         dif_unique_point, dif_transx, dif_transy = grids[dif_grid].mapping[1:3, dif_point]
+
+        # The affected-points matrix of this adsorbate is fixed for the loops below
+        dif_affected_points = Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation]
         
         # Loop over grids
         for grid_id in 1:Ngrids
@@ -321,12 +324,9 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
                             corrected_transy = blocked_transy - dif_transy
                             corrected_point = map_translation_to_gridpoint(blocked_unique_point, grids[grid_id].Nuniquepoints, corrected_transx, lattice.Ncellx, corrected_transy, lattice.Ncelly)
 
-                            if [dif_ads_molecule, grid_id, corrected_point, dif_rotation] in eachcol(Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation])
+                            if contains_column(dif_affected_points, dif_ads_molecule, grid_id, corrected_point, dif_rotation)
                                 rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
                                 continue
-                            #elseif [dif_ads_molecule, grid_id, corrected_point, -1] in eachcol(Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation])
-                            #    rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
-                            #    continue
                             else
                                 rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
                                 continue
