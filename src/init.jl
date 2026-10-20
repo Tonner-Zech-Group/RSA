@@ -71,9 +71,43 @@ mutable struct gridpoint_struct
     Nblocked_rotation::Vector{Vector{Int64}} # Vector counting how often a rotation was blocked by an adjacent adsorbate or by the adsorbate
 end
 
+# Reusable scratch buffers for the event-list update.
+#
+# Fields
+# - `counter`: increasing visit stamp; incremented once per update.
+# - `affected_stamp`, `diffusion_stamp`: `[grid][point]` last-visit stamps.
+# - `affected_points`, `diffusion_points`: `(grid, point)` worklists.
+mutable struct rsa_stamp_lists_struct
+    counter::Int64
+    affected_stamp::Vector{Vector{Int64}}
+    diffusion_stamp::Vector{Vector{Int64}}
+    affected_points::Vector{Tuple{Int64,Int64}}
+    diffusion_points::Vector{Tuple{Int64,Int64}}
+end
+
 #
 # Function definitions
 #
+
+# A function to allocate the stamp list buffers for the event-list update.
+function rsa_stamp_lists_initialization(Ngrids, grids)
+     return rsa_stamp_lists_struct(0,
+                                   [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                                   [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                                   Vector{Tuple{Int64,Int64}}(),
+                                   Vector{Tuple{Int64,Int64}}())
+end
+
+# A function to record a grid point in a worklist unless it is already present.
+# Returns true if the point was newly added.
+@inline function mark_point!(worklist, stamps, stamp, grid, point)
+    if stamps[grid][point] != stamp
+        stamps[grid][point] = stamp
+        push!(worklist, (grid, point))
+        return true
+    end
+    return false
+end
 
 # A function to define all grid strcut values that are identical for every point of a given grid type. 
 function grid_level_initials(grid_id, Ngrids, Nmolecules, molecules, rate_constants_info)
@@ -1111,7 +1145,7 @@ function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, event
 end
 
 # A function to seed a clean grid with the final configuration of a previous run.
-function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, timer)
+function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, events_stamplist, timer)
 
     # Nothing to seed for a normal run
     if size(seed, 2) == 0
@@ -1140,7 +1174,7 @@ function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, 
         rsa_run_results.status = hcat(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point, selected_rotation])
 
         # Update event list
-        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
+        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, events_stamplist)
     end
 
     # Return nothing
