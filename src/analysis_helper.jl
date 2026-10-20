@@ -454,7 +454,7 @@ function create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, latt
                 distance_vectors =  grids[grid_B_id].points .- upoint
 
                 # Correct by minimum image convention
-                corrected_distance_vectors = apply_minimum_image_convention(distance_vectors, lattice.cellvectors, lattice.inversevectors)
+                corrected_distance_vectors = apply_minimum_image_convention(distance_vectors, lattice.transcellvectors, lattice.inversecellvectors)
 
                 # Get the distances
                 distances = vec(sqrt.(sum(abs2, corrected_distance_vectors, dims = 1)))
