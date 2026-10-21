@@ -83,6 +83,47 @@ end
 # Function definitions
 #
 
+# Release/block delta for one state transition, computed once and cached.
+#
+# The delta does not actually depend on where in the lattice the event happens. For a
+# rotation or a conformer change the two orientations sit on the same grid point; for a
+# diffusion they sit a fixed number of cells apart. So the delta is a function of the
+# transition alone -- (event type, both orientations, relative cell offset) -- and can be
+# computed once in coordinates relative to the origin cell and reused everywhere. Each
+# use then only translates the delta columns.
+#
+# Returns the cached (release, block) pair in relative coordinates. Both are owned by
+# the cache and must not be mutated by the caller.
+function cached_affected_delta(event_buffer, delta_key, Affected_Points_Rotations,
+                               self_molecule, self_grid, self_unique_point, self_rotation,
+                               target_molecule, target_grid, target_unique_point, target_rotation,
+                               offset_transx, offset_transy, grids, lattice)
+
+    entry = get(event_buffer.delta_cache, delta_key, nothing)
+    if entry !== nothing
+        return entry
+    end
+
+    # Self is taken straight from the event list: its stored point indices are already
+    # relative to the origin cell. The target is brought into the same frame by
+    # translating it by the relative cell offset.
+    self_relative = Affected_Points_Rotations[self_molecule][self_grid][self_unique_point][self_rotation]
+    target_source = Affected_Points_Rotations[target_molecule][target_grid][target_unique_point][target_rotation]
+    target_relative = Matrix{Int64}(undef, 4, size(target_source, 2))
+    translate_affected_columns!(target_relative, target_source, grids, lattice, offset_transx, offset_transy)
+
+    entry = delta_matrix(self_relative, target_relative)
+
+    # Bounded cache: past the cap the delta is recomputed per use instead of stored, so
+    # a system with an unexpectedly large transition space cannot exhaust memory.
+    if length(event_buffer.delta_cache) < rsa_delta_cache_max_entries
+        event_buffer.delta_cache[delta_key] = entry
+    end
+
+    return entry
+
+end
+
 # Update the event list based on the selected event
 # Update: Number of possible events, 
 function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
@@ -108,7 +149,14 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     self_rotation = rsa_gridpoints[self_grid][self_point].adsorbed_rotation
     self_unique_point, self_transx, self_transy = grids[self_grid].mapping[1:3, self_point]
     
-    # Information on the target point based on the selected event
+    # Information on the target based on the selected event
+    # By default the target is the adsorbate itself; every event changes only part of it
+    target_molecule = self_molecule
+    target_grid = self_grid
+    target_point = self_point
+    target_unique_point = self_unique_point
+    target_transx = self_transx
+    target_transy = self_transy
     if selected_event_type == 1
         target_rotation = selected_event
     elseif selected_event_type == 2
@@ -123,6 +171,10 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         target_molecule = selected_subevent
     end
 
+    # Cell offset between adsorbate and target (only non-zero for a diffusion)
+    # Reduced modulo the cell counts as in map_translation_to_gridpoint, which keeps the delta cache keys bounded
+    offset_transx = mod(target_transx - self_transx, lattice.Ncellx)
+    offset_transy = mod(target_transy - self_transy, lattice.Ncelly)
     
     # The stamp counter is used to identify points which need to be updated
     event_buffer.counter += 1
@@ -140,28 +192,43 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         mark_point!(list_affected_points, affected_stamp, visit_stamp, target_grid, target_point)
     end
 
-    # Get the affected points for self and targets
-    # These points are directly mapped to the actual points
+    # Get the release and block lists
+    #
+    # An adsorption has nothing to release and blocks everything its own orientation
+    # covers, so it needs the mapped self list directly and no delta at all.
     if selected_event_type == 1
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = Matrix{Int64}(undef,4,0)
-    elseif selected_event_type == 2
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
-    elseif selected_event_type == 3
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, target_transx, target_transy)
-    elseif selected_event_type == 4
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, target_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
-    end
 
-    # Create a delta list
-    if selected_event_type != 1
-        release_matrix, block_matrix = delta_matrix(self_affected_points, target_affected_points) 
-    else
         release_matrix = Matrix{Int64}(undef, 4, 0)
-        block_matrix = self_affected_points
+        block_matrix = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
+
+    else
+
+        if event_buffer.memoize_delta
+
+            delta_key = (selected_event_type, self_molecule, self_grid, self_unique_point, self_rotation,
+                         target_molecule, target_grid, target_unique_point, target_rotation,
+                         offset_transx, offset_transy)
+            release_relative, block_relative = cached_affected_delta(event_buffer, delta_key, Affected_Points_Rotations,
+                                                                    self_molecule, self_grid, self_unique_point, self_rotation,
+                                                                    target_molecule, target_grid, target_unique_point, target_rotation,
+                                                                    offset_transx, offset_transy, grids, lattice)
+
+            # The cached delta is in coordinates relative to the origin cell; only its
+            # columns have to be translated, not both full affected-point lists.
+            release_matrix = Matrix{Int64}(undef, 4, size(release_relative, 2))
+            translate_affected_columns!(release_matrix, release_relative, grids, lattice, self_transx, self_transy)
+            block_matrix = Matrix{Int64}(undef, 4, size(block_relative, 2))
+            translate_affected_columns!(block_matrix, block_relative, grids, lattice, self_transx, self_transy)
+
+        else
+
+            # Legacy path, kept reachable via memoize_delta = false
+            self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
+            target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, target_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, target_transx, target_transy)
+            release_matrix, block_matrix = delta_matrix(self_affected_points, target_affected_points)
+
+        end
+
     end
 
     #
@@ -930,6 +997,7 @@ Performs `NRuns` RSA simulations controlled by the input file found under the gi
 
 # Optional input
 - `hdf5`: Flag to request the generation of a HDF5 file storing all information.
+- `memoize_delta`: Cache the release/block delta per state transition instead of recomputing it every step (default `true`). 
 
 # Return values
 Returns input information and results as structs in the follwing order:
@@ -943,7 +1011,7 @@ Returns input information and results as structs in the follwing order:
 
 
 """
-function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutput,NoTimerOutput}=NoTimerOutput(), hdf5=false)
+function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutput,NoTimerOutput}=NoTimerOutput(), hdf5=false, memoize_delta::Bool=true)
 
     #
     # RSA initialization
@@ -961,16 +1029,16 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # Is this a restart run or the first run
     if events.restart_flag == true
         # Continue as restart run
-        return perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events)
+        return perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta)
     else
         # Continue as first run
-        return perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events)
+        return perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta)
     end
 
 end
 
 # The main function controlling multiple rsa runs starting from scratch
-function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events)
+function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta::Bool=true)
 
     # TimerOutputs
     @timeit timer "Initialization" begin
@@ -1002,7 +1070,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
     # Allocate the event-list event buffers
-    event_buffer = rsa_event_buffer_initialization(Ngrids, grids)
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, memoize_delta)
 
     # TimerOutputs
     end
@@ -1051,7 +1119,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
 end
 
 # The main function controlling multiple rsa runs based on a restart calculation
-function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events)
+function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta::Bool=true)
 
     # TimerOutputs
     @timeit timer "Initialization" begin
@@ -1096,7 +1164,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
     # Allocate the event-list event buffers
-    event_buffer = rsa_event_buffer_initialization(Ngrids, grids)
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, memoize_delta)
 
     # TimerOutputs
     end

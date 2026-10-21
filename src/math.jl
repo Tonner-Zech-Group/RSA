@@ -249,20 +249,41 @@ function delta_matrix(matrix_A, matrix_B)
 
 end
 
+# Function to translate the grid-point row of an affected-points matrix.
+#
+# `source` holds affected points relative to a reference cell; each column is
+# (molecule, grid, point, rotation) and only the point in row 3 has to be shifted by
+# the reference translation. Writes into the first `size(source, 2)` columns of
+# `destination` and returns that count. `destination` and `source` may be the same
+# matrix.
+function translate_affected_columns!(destination, source, grids, lattice, reference_transx, reference_transy)
+
+    Npoints = size(source, 2)
+
+    for point_id in 1:Npoints
+        affected_grid_id = source[2, point_id]
+        affected_grid = grids[affected_grid_id]
+        mapping = affected_grid.mapping
+        source_point = source[3, point_id]
+        new_transx = mapping[2, source_point] + reference_transx
+        new_transy = mapping[3, source_point] + reference_transy
+
+        destination[1, point_id] = source[1, point_id]
+        destination[2, point_id] = affected_grid_id
+        destination[3, point_id] = map_translation_to_gridpoint(mapping[1, source_point], affected_grid.Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
+        destination[4, point_id] = source[4, point_id]
+    end
+
+    return Npoints
+
+end
+
 # Function to map a complete list of affected unique points to the actual points
 function map_affected_grid_points_to_actual_points(Affected_Points_Rotations, molecule_id, grid_id, unique_point_id, rotation_id, grids, lattice, reference_transx, reference_transy)
 
-    # Generate a copy of the unique affected points
-    mapped_points = copy(Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id])
-
-    # Map all unique values to the actual values
-    for point_id in axes(mapped_points,2)
-        mapping_unique_point, mapping_transx, mapping_transy = grids[mapped_points[2,point_id]].mapping[1:3, mapped_points[3,point_id]]
-        new_transx = mapping_transx + reference_transx
-        new_transy = mapping_transy + reference_transy
-        affected_point = map_translation_to_gridpoint(mapping_unique_point, grids[mapped_points[2,point_id]].Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
-        mapped_points[3,point_id] = affected_point
-    end
+    source = Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id]
+    mapped_points = Matrix{Int64}(undef, 4, size(source, 2))
+    translate_affected_columns!(mapped_points, source, grids, lattice, reference_transx, reference_transy)
 
     # Return the results
     return mapped_points

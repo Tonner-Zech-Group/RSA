@@ -77,12 +77,19 @@ end
 # - `counter`: increasing visit stamp; incremented once per update.
 # - `affected_stamp`, `diffusion_stamp`: `[grid][point]` last-visit stamps.
 # - `affected_points`, `diffusion_points`: `(grid, point)` worklists.
+# - `memoize_delta`: whether to cache the calculated delta matrices in the event updates.
+# - `delta_cache: the cache of previously computed delta matrices. keyed by the transition descriptor: (event type, self molecule/grid/unique point/rotation, target molecule/grid/unique point/rotation, relative cell offset x, y).
+# Upper bound on cached transitions is set by `rsa_delta_cache_max_entries`.
+const rsa_delta_key = NTuple{11,Int64}
+const rsa_delta_cache_max_entries = 20_000
 mutable struct rsa_event_buffer_struct
     counter::Int64
     affected_stamp::Vector{Vector{Int64}}
     diffusion_stamp::Vector{Vector{Int64}}
     affected_points::Vector{Tuple{Int64,Int64}}
     diffusion_points::Vector{Tuple{Int64,Int64}}
+    memoize_delta::Bool
+    delta_cache::Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}
 end
 
 #
@@ -90,12 +97,14 @@ end
 #
 
 # A function to allocate the event buffers for the event-list update.
-function rsa_event_buffer_initialization(Ngrids, grids)
-     return rsa_event_buffer_struct(0,
-                                   [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
-                                   [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
-                                   Vector{Tuple{Int64,Int64}}(),
-                                   Vector{Tuple{Int64,Int64}}())
+function rsa_event_buffer_initialization(Ngrids, grids, memoize_delta::Bool = true)
+    return rsa_event_buffer_struct(0,
+                              [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              Vector{Tuple{Int64,Int64}}(),
+                              Vector{Tuple{Int64,Int64}}(),
+                              memoize_delta,
+                              Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}())
 end
 
 # A function to record a grid point in a worklist unless it is already present.
