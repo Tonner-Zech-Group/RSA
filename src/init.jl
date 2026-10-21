@@ -77,7 +77,7 @@ end
 # - `counter`: increasing visit stamp; incremented once per update.
 # - `affected_stamp`, `diffusion_stamp`: `[grid][point]` last-visit stamps.
 # - `affected_points`, `diffusion_points`: `(grid, point)` worklists.
-mutable struct rsa_stamp_lists_struct
+mutable struct rsa_event_buffer_struct
     counter::Int64
     affected_stamp::Vector{Vector{Int64}}
     diffusion_stamp::Vector{Vector{Int64}}
@@ -89,9 +89,9 @@ end
 # Function definitions
 #
 
-# A function to allocate the stamp list buffers for the event-list update.
-function rsa_stamp_lists_initialization(Ngrids, grids)
-     return rsa_stamp_lists_struct(0,
+# A function to allocate the event buffers for the event-list update.
+function rsa_event_buffer_initialization(Ngrids, grids)
+     return rsa_event_buffer_struct(0,
                                    [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
                                    [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
                                    Vector{Tuple{Int64,Int64}}(),
@@ -1145,7 +1145,7 @@ function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, event
 end
 
 # A function to seed a clean grid with the final configuration of a previous run.
-function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, events_stamplist, timer)
+function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, event_buffer, timer)
 
     # Nothing to seed for a normal run
     if size(seed, 2) == 0
@@ -1174,7 +1174,7 @@ function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, 
         rsa_run_results.status = hcat(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point, selected_rotation])
 
         # Update event list
-        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, events_stamplist)
+        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
     end
 
     # Return nothing

@@ -85,7 +85,7 @@ end
 
 # Update the event list based on the selected event
 # Update: Number of possible events, 
-function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, events_stamplist)
+function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
 
      # Strategy:
      # + Update the bool_rotation vector (storing the number of accessible rotations) all the time
@@ -125,12 +125,12 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
 
     
     # The stamp counter is used to identify points which need to be updated
-    events_stamplist.counter += 1
-    visit_stamp = events_stamplist.counter
-    affected_stamp = events_stamplist.affected_stamp
-    diffusion_stamp = events_stamplist.diffusion_stamp
-    list_affected_points = events_stamplist.affected_points
-    list_diffusion_points = events_stamplist.diffusion_points
+    event_buffer.counter += 1
+    visit_stamp = event_buffer.counter
+    affected_stamp = event_buffer.affected_stamp
+    diffusion_stamp = event_buffer.diffusion_stamp
+    list_affected_points = event_buffer.affected_points
+    list_diffusion_points = event_buffer.diffusion_points
     empty!(list_affected_points)
     empty!(list_diffusion_points)
 
@@ -775,7 +775,7 @@ function select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, t
 end
 
 # Invoke all routines for a single rsa step
-function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, events_stamplist, timer)
+function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, event_buffer, timer)
 
     # Increase the step counter
     rsa_run_results.Nsteps += 1
@@ -833,7 +833,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     end
 
     # Update event list
-    @timeit timer "Event list update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, events_stamplist)
+    @timeit timer "Event list update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
 
     # Return additional information for IO etc
     #return 
@@ -841,7 +841,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
 end
 
 # Invoke all routines for a complete rsa run
-function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, events_stamplist, timer; seed::Matrix{Int64}=Matrix{Int64}(undef, 4, 0))
+function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, event_buffer, timer; seed::Matrix{Int64}=Matrix{Int64}(undef, 4, 0))
 
     # Initialization of event counter
     non_adsorption_events = 0
@@ -864,14 +864,14 @@ function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, 
  
     # Seed the calculation based on the current origin seed
     # This functions does nothing in case the seed is empty (therefore only used for restart runs)
-    seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, events_stamplist, timer)
+    seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, event_buffer, timer)
     rsa_run_results.seed_offset = size(seed, 2)
 
     # Perform rsa steps until no adsorption is possible any more
     while true
 
         # Perform RSA step
-        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, events_stamplist, timer)
+        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, event_buffer, timer)
 
         # Break conditions:
         # No further events possible
@@ -1001,8 +1001,8 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     # Build the initial grid once and reuse it across all runs
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
-    # Allocate the event-list stamp list buffers
-    events_stamplist = rsa_stamp_lists_initialization(Ngrids, grids)
+    # Allocate the event-list event buffers
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids)
 
     # TimerOutputs
     end
@@ -1023,7 +1023,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
         end
 
         # Perform the RSA run
-        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, events_stamplist, timer)
+        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, event_buffer, timer)
 
     end
 
@@ -1095,8 +1095,8 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     # Build the initial grid once and reuse it across all runs
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
-    # Allocate the event-list stamp list buffers
-    events_stamplist = rsa_stamp_lists_initialization(Ngrids, grids)
+    # Allocate the event-list event buffers
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids)
 
     # TimerOutputs
     end
@@ -1129,7 +1129,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
             end
 
             # Perform the RSA run
-            rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, events_stamplist, timer; seed = seed_status)
+            rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, event_buffer, timer; seed = seed_status)
 
         end
     
