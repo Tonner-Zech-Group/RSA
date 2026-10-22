@@ -438,11 +438,11 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     #println("Diffusion targets points list")
     #println(list_diffusion_points)
     for element in list_affected_points
-        update_rate_constants_and_events!(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info)
+        update_rate_constants_and_events!(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info, event_buffer)
     end
     for element in list_diffusion_points
         if affected_stamp[element[1]][element[2]] != visit_stamp
-            update_rate_constants_and_events!(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info)
+            update_rate_constants_and_events!(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info, event_buffer)
         end
     end
 
@@ -450,10 +450,18 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
 end
 
 # A function to update the rate constants and number of events for a given grid point
-function update_rate_constants_and_events!(rsa_gridpoints, gridtype, gridpoint, Nmolecules, Ngrids, rate_constants_info)
+function update_rate_constants_and_events!(rsa_gridpoints, gridtype, gridpoint, Nmolecules, Ngrids, rate_constants_info, event_buffer)
 
     # Get the grid point to update
     point = rsa_gridpoints[gridtype][gridpoint]
+
+    # Counter values before the update, so the running totals can be adjusted by the
+    # difference instead of being re-summed over the whole grid every step
+    previous_nads = point.Nads
+    previous_ndif = point.Ndif
+    previous_nrot = point.Nrot
+    previous_ncon = point.Ncon
+    previous_nevents = point.Nevents
 
     # First check whether a molecule is adsorbed on this point
     if point.bool_occupied == true
@@ -594,6 +602,16 @@ function update_rate_constants_and_events!(rsa_gridpoints, gridtype, gridpoint, 
     # Update number of total events
     point.Nevents = point.Nads + point.Nrot + point.Ndif + point.Ncon 
 
+    # Mirror the two rate constants into the dense arrays and fold the counter changes
+    # into the running totals. Integer arithmetic, so the totals stay exact.
+    event_buffer.trate[gridtype][gridpoint] = point.Trateconst
+    event_buffer.trate_ads[gridtype][gridpoint] = point.Trateconst_ads
+    event_buffer.total_nads += point.Nads - previous_nads
+    event_buffer.total_ndif += point.Ndif - previous_ndif
+    event_buffer.total_nrot += point.Nrot - previous_nrot
+    event_buffer.total_ncon += point.Ncon - previous_ncon
+    event_buffer.total_nevents += point.Nevents - previous_nevents
+
     # Return nothing - gridpoints are updated in place
     return nothing
 
@@ -601,54 +619,29 @@ end
 
 # A function to calculate the rateconstant as sum over all gridpoints
 # In addition a vector storing the cumulative rate constants is generated
-function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption, event_buffer)
 
     # Default rate constants
     total_grid_rate_constant, cumulative_grid_rate_constants, cumulative_points_rate_constants = rate_constant_buffers
     total_rate_constant = 0.0
 
-    # Default events possible
-    total_events_possible = 0
-    ads_events_possible = 0
-    dif_events_possible = 0
-    rot_events_possible = 0
-    con_events_possible = 0
-
     # First loop over grids
     for grid_id in 1:Ngrids
 
-        # Get the submatrix of the gridpoints
-        subgrid_matrix = rsa_gridpoints[grid_id]
+        # The dense mirror of the per-point rate constant. Reading it instead of
+        # dereferencing every gridpoint_struct turns this pass into a contiguous scan;
+        # the summation order is unchanged (ascending point, then ascending grid), so the
+        # accumulated values are bit-identical to summing the struct fields directly.
+        point_rates = force_adsorption == true ? event_buffer.trate_ads[grid_id] : event_buffer.trate[grid_id]
 
         # Defaults
         rate_constant = 0.0
         cumulative_points_rates = cumulative_points_rate_constants[grid_id]
 
         # Second loop over gridpoints of this grid
-        for point_id in 1:grids[grid_id].Npoints
-
-            # Get the struct of the gridpoint
-            gridpoint = subgrid_matrix[point_id]
-
-            # Update rate constants
-            if force_adsorption == true
-                rate_constant += gridpoint.Trateconst_ads
-            else
-                rate_constant += gridpoint.Trateconst
-            end
+        @inbounds for point_id in 1:grids[grid_id].Npoints
+            rate_constant += point_rates[point_id]
             cumulative_points_rates[point_id] = rate_constant
-            
-            # Update events possible
-            if force_adsorption == true
-                total_events_possible += gridpoint.Nads
-            else
-                total_events_possible += gridpoint.Nevents
-            end
-            ads_events_possible += gridpoint.Nads
-            dif_events_possible += gridpoint.Ndif
-            rot_events_possible += gridpoint.Nrot
-            con_events_possible += gridpoint.Ncon
-
         end
 
         # Update grid rate constants
@@ -658,8 +651,12 @@ function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ng
         
     end
 
+    # Events possible are maintained incrementally by update_rate_constants_and_events!
+    # and refreshed once per run, so no per-step pass over the grid is needed
+    total_events_possible = force_adsorption == true ? event_buffer.total_nads : event_buffer.total_nevents
+
     # Return result
-    return total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible
+    return total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, event_buffer.total_nads, event_buffer.total_nrot, event_buffer.total_ndif, event_buffer.total_ncon
 
 end
 
@@ -848,7 +845,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     rsa_run_results.Nsteps += 1
 
     # Create total rate constants
-    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption, event_buffer)
     #=
     println("Total rate constant: "*string(total_rate_constant))
     println("Cummulative grid rate constant: "*string(cumulative_grid_rate_constants))
@@ -860,7 +857,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     if force_adsorption == true && total_events_possible == 0
         # As an adsorption event can not be forced the rate constants are recalculated without forced adsorption
         force_adsorption = false
-        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption, event_buffer)
     end
 
 
@@ -929,6 +926,10 @@ function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, 
     # and the cummilative rate constant for ever grid points (cumulative_points_rate_constants)
     rate_constant_buffers = (zeros(Ngrids), zeros(Ngrids), [Vector{Float64}(undef, grids[grid_id].Npoints) for grid_id in 1:Ngrids])
  
+    # Rebuild the dense rate mirrors and running counter totals for this run. Covers
+    # both a freshly initialised grid and one restored by reset_gridpoints!.
+    refresh_rate_mirror!(event_buffer, rsa_gridpoints, Ngrids, grids)
+
     # Seed the calculation based on the current origin seed
     # This functions does nothing in case the seed is empty (therefore only used for restart runs)
     seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, event_buffer, timer)

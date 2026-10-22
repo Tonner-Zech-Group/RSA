@@ -37,6 +37,9 @@ end
 # Contained information are:
 # Number of possible events, Total rate constant of all events, possible rotations for an adsorbing adsorbate
 mutable struct gridpoint_struct
+    # Nevents, Nads, Ndif, Nrot, Ncon, Trateconst and Trateconst_ads are mirrored in the event buffer
+    # (running totals and dense rate arrays). Change them only in update_rate_constants_and_events!,
+    # or before refresh_rate_mirror! rebuilds the mirror at the start of a run; otherwise the mirror becomes stale.
     Nevents::Int64 # Total number of possible events
     Nads::Int64
     Ndif::Int64
@@ -79,6 +82,8 @@ end
 # - `affected_points`, `diffusion_points`: `(grid, point)` worklists.
 # - `memoize_delta`: whether to cache the calculated delta matrices in the event updates.
 # - `delta_cache: the cache of previously computed delta matrices. keyed by the transition descriptor: (event type, self molecule/grid/unique point/rotation, target molecule/grid/unique point/rotation, relative cell offset x, y).
+# - `trate`, `trate_ads`: dense mirrors of the per-point total rate constants, for summing over contiguous memory instead of dereferencing every gridpoint_struct.
+# - `total_nads`, `total_ndif`, `total_nrot`, `total_ncon`, `total_nevents`: running totals of the event counters.
 # Upper bound on cached transitions is set by `rsa_delta_cache_max_entries`.
 const rsa_delta_key = NTuple{11,Int64}
 const rsa_delta_cache_max_entries = 20_000
@@ -90,6 +95,13 @@ mutable struct rsa_event_buffer_struct
     diffusion_points::Vector{Tuple{Int64,Int64}}
     memoize_delta::Bool
     delta_cache::Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}
+    trate::Vector{Vector{Float64}}
+    trate_ads::Vector{Vector{Float64}}
+    total_nads::Int64
+    total_ndif::Int64
+    total_nrot::Int64
+    total_ncon::Int64
+    total_nevents::Int64
 end
 
 #
@@ -104,7 +116,46 @@ function rsa_event_buffer_initialization(Ngrids, grids, memoize_delta::Bool = tr
                               Vector{Tuple{Int64,Int64}}(),
                               Vector{Tuple{Int64,Int64}}(),
                               memoize_delta,
-                              Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}())
+                              Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}(),
+                              [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              0, 0, 0, 0, 0)
+end
+
+# A function to rebuild the dense rate mirrors and the running event-counter totals from the current grid state.
+# Called once at the start of every run.
+function refresh_rate_mirror!(event_buffer, rsa_gridpoints, Ngrids, grids)
+
+    total_nads = 0
+    total_ndif = 0
+    total_nrot = 0
+    total_ncon = 0
+    total_nevents = 0
+
+    for grid_id in 1:Ngrids
+        subgrid = rsa_gridpoints[grid_id]
+        trate = event_buffer.trate[grid_id]
+        trate_ads = event_buffer.trate_ads[grid_id]
+        for point_id in 1:grids[grid_id].Npoints
+            gridpoint = subgrid[point_id]
+            trate[point_id] = gridpoint.Trateconst
+            trate_ads[point_id] = gridpoint.Trateconst_ads
+            total_nads += gridpoint.Nads
+            total_ndif += gridpoint.Ndif
+            total_nrot += gridpoint.Nrot
+            total_ncon += gridpoint.Ncon
+            total_nevents += gridpoint.Nevents
+        end
+    end
+
+    event_buffer.total_nads = total_nads
+    event_buffer.total_ndif = total_ndif
+    event_buffer.total_nrot = total_nrot
+    event_buffer.total_ncon = total_ncon
+    event_buffer.total_nevents = total_nevents
+
+    return nothing
+
 end
 
 # A function to record a grid point in a worklist unless it is already present.
