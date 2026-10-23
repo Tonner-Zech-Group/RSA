@@ -80,6 +80,7 @@ end
 # - `counter`: increasing visit stamp; incremented once per update.
 # - `affected_stamp`, `diffusion_stamp`: `[grid][point]` last-visit stamps.
 # - `affected_points`, `diffusion_points`: `(grid, point)` worklists.
+# - `diffusion_possible`: whether any diffusion event is possible in this system; if not, step 3 of the event-list update is skipped.
 # - `memoize_delta`: whether to cache the calculated delta matrices in the event updates.
 # - `delta_cache: the cache of previously computed delta matrices. keyed by the transition descriptor: (event type, self molecule/grid/unique point/rotation, target molecule/grid/unique point/rotation, relative cell offset x, y).
 # - `trate`, `trate_ads`: dense mirrors of the per-point total rate constants, for summing over contiguous memory instead of dereferencing every gridpoint_struct.
@@ -94,6 +95,7 @@ mutable struct rsa_event_buffer_struct
     diffusion_stamp::Vector{Vector{Int64}}
     affected_points::Vector{Tuple{Int64,Int64}}
     diffusion_points::Vector{Tuple{Int64,Int64}}
+    diffusion_possible::Bool
     memoize_delta::Bool
     delta_cache::Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}
     trate::Vector{Vector{Float64}}
@@ -115,7 +117,7 @@ end
 #
 
 # A function to allocate the event buffers for the event-list update.
-function rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, memoize_delta::Bool = true)
+function rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, rate_constants_info, memoize_delta::Bool = true)
 
     # Worst-case width of the affected-point matrices. Every entry of
     # Affected_Points_Rotations is allocated, even for molecule/grid combinations that
@@ -131,11 +133,17 @@ function rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotation
         end
     end
 
+    # create_neighbour_list skips every combination with a diffusion rate constant <= 0,
+    # so if none is positive then target_diffusion and origin_diffusion are empty for
+    # every point and step 3 cannot change anything.
+    diffusion_possible = any(>(0.0), rate_constants_info.dif)
+
     return rsa_event_buffer_struct(0,
                               [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
                               [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
                               Vector{Tuple{Int64,Int64}}(),
                               Vector{Tuple{Int64,Int64}}(),
+                              diffusion_possible,
                               memoize_delta,
                               Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}(),
                               [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
