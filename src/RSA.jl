@@ -149,7 +149,10 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     self_point = selected_grid_point
     self_molecule = selected_molecule
     self_rotation = rsa_gridpoints[self_grid][self_point].adsorbed_rotation
-    self_unique_point, self_transx, self_transy = grids[self_grid].mapping[1:3, self_point]
+    self_mapping = grids[self_grid].mapping
+    self_unique_point = self_mapping[1, self_point]
+    self_transx = self_mapping[2, self_point]
+    self_transy = self_mapping[3, self_point]
     
     # Information on the target based on the selected event
     # By default the target is the adsorbate itself; every event changes only part of it
@@ -167,7 +170,10 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         target_rotation = selected_event_2
         target_grid = selected_subevent
         target_point = selected_event
-        target_unique_point, target_transx, target_transy = grids[target_grid].mapping[1:3, target_point]
+        target_mapping = grids[target_grid].mapping
+        target_unique_point = target_mapping[1, target_point]
+        target_transx = target_mapping[2, target_point]
+        target_transy = target_mapping[3, target_point]
     elseif selected_event_type == 4
         target_rotation = selected_event
         target_molecule = selected_subevent
@@ -366,7 +372,10 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         dif_ads_molecule = rsa_gridpoints[dif_grid][dif_point].adsorbed_molecule
         dif_rotation = rsa_gridpoints[dif_grid][dif_point].adsorbed_rotation
         dif_target_points = rsa_gridpoints[dif_grid][dif_point].target_diffusion[dif_ads_molecule]
-        dif_unique_point, dif_transx, dif_transy = grids[dif_grid].mapping[1:3, dif_point]
+        dif_mapping = grids[dif_grid].mapping
+        dif_unique_point = dif_mapping[1, dif_point]
+        dif_transx = dif_mapping[2, dif_point]
+        dif_transy = dif_mapping[3, dif_point]
 
         # The affected-points matrix of this adsorbate is fixed for the loops below
         dif_affected_points = Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation]
@@ -398,7 +407,10 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
                         if rsa_gridpoints[grid_id][target_point].Nblocked_rotation[dif_ads_molecule][dif_rotation] == 1
 
                             # Is the rotation blocked by the current adsorbate
-                            blocked_unique_point, blocked_transx, blocked_transy = grids[grid_id].mapping[1:3, target_point]
+                            blocked_mapping = grids[grid_id].mapping
+                            blocked_unique_point = blocked_mapping[1, target_point]
+                            blocked_transx = blocked_mapping[2, target_point]
+                            blocked_transy = blocked_mapping[3, target_point]
                             corrected_transx = blocked_transx - dif_transx
                             corrected_transy = blocked_transy - dif_transy
                             corrected_point = map_translation_to_gridpoint(blocked_unique_point, grids[grid_id].Nuniquepoints, corrected_transx, lattice.Ncellx, corrected_transy, lattice.Ncelly)
