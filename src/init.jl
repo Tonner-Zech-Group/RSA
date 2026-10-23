@@ -83,6 +83,7 @@ end
 # - `memoize_delta`: whether to cache the calculated delta matrices in the event updates.
 # - `delta_cache: the cache of previously computed delta matrices. keyed by the transition descriptor: (event type, self molecule/grid/unique point/rotation, target molecule/grid/unique point/rotation, relative cell offset x, y).
 # - `trate`, `trate_ads`: dense mirrors of the per-point total rate constants, for summing over contiguous memory instead of dereferencing every gridpoint_struct.
+# - `release`, `block`, `keys_self`, `keys_target`, `target_relative`: output buffers for the affected-point pipeline, sized once at the worst-case width of Affected_Points_Rotations.
 # - `total_nads`, `total_ndif`, `total_nrot`, `total_ncon`, `total_nevents`: running totals of the event counters.
 # Upper bound on cached transitions is set by `rsa_delta_cache_max_entries`.
 const rsa_delta_key = NTuple{11,Int64}
@@ -97,6 +98,11 @@ mutable struct rsa_event_buffer_struct
     delta_cache::Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}
     trate::Vector{Vector{Float64}}
     trate_ads::Vector{Vector{Float64}}
+    release::Matrix{Int64}
+    block::Matrix{Int64}
+    keys_self::Set{NTuple{4,Int64}}
+    keys_target::Set{NTuple{4,Int64}}
+    target_relative::Matrix{Int64}
     total_nads::Int64
     total_ndif::Int64
     total_nrot::Int64
@@ -109,7 +115,22 @@ end
 #
 
 # A function to allocate the event buffers for the event-list update.
-function rsa_event_buffer_initialization(Ngrids, grids, memoize_delta::Bool = true)
+function rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, memoize_delta::Bool = true)
+
+    # Worst-case width of the affected-point matrices. Every entry of
+    # Affected_Points_Rotations is allocated, even for molecule/grid combinations that
+    # never occur, so this bounds the release, block and target buffers alike.
+    max_affected = 0
+    for per_molecule in Affected_Points_Rotations
+        for per_grid in per_molecule
+            for per_unique_point in per_grid
+                for affected_matrix in per_unique_point
+                    max_affected = max(max_affected, size(affected_matrix, 2))
+                end
+            end
+        end
+    end
+
     return rsa_event_buffer_struct(0,
                               [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
                               [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
@@ -119,6 +140,11 @@ function rsa_event_buffer_initialization(Ngrids, grids, memoize_delta::Bool = tr
                               Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}(),
                               [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
                               [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              Matrix{Int64}(undef, 4, max_affected),
+                              Matrix{Int64}(undef, 4, max_affected),
+                              Set{NTuple{4,Int64}}(),
+                              Set{NTuple{4,Int64}}(),
+                              Matrix{Int64}(undef, 4, max_affected),
                               0, 0, 0, 0, 0)
 end
 

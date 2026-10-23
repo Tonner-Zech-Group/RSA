@@ -108,11 +108,13 @@ function cached_affected_delta(event_buffer, delta_key, Affected_Points_Rotation
     # relative to the origin cell. The target is brought into the same frame by
     # translating it by the relative cell offset.
     self_relative = Affected_Points_Rotations[self_molecule][self_grid][self_unique_point][self_rotation]
-    target_source = Affected_Points_Rotations[target_molecule][target_grid][target_unique_point][target_rotation]
-    target_relative = Matrix{Int64}(undef, 4, size(target_source, 2))
-    translate_affected_columns!(target_relative, target_source, grids, lattice, offset_transx, offset_transy)
+    Ntarget = map_affected_grid_points_to_actual_points!(event_buffer.target_relative, Affected_Points_Rotations, target_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, offset_transx, offset_transy)
+    target_relative = @view event_buffer.target_relative[:, 1:Ntarget]
 
-    entry = delta_matrix(self_relative, target_relative)
+    # This runs once per distinct transition, so the copies below are cheap; they have to
+    # be copies because the buffers are reused on the next miss.
+    Nrelease, Nblock = delta_matrix!(event_buffer.release, event_buffer.block, event_buffer.keys_self, event_buffer.keys_target, self_relative, target_relative)
+    entry = (event_buffer.release[:, 1:Nrelease], event_buffer.block[:, 1:Nblock])
 
     # Bounded cache: past the cap the delta is recomputed per use instead of stored, so
     # a system with an unexpectedly large transition space cannot exhaust memory.
@@ -198,8 +200,9 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     # covers, so it needs the mapped self list directly and no delta at all.
     if selected_event_type == 1
 
-        release_matrix = Matrix{Int64}(undef, 4, 0)
-        block_matrix = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
+        Nblock = map_affected_grid_points_to_actual_points!(event_buffer.block, Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
+        release_matrix = @view event_buffer.release[:, 1:0]
+        block_matrix = @view event_buffer.block[:, 1:Nblock]
 
     else
 
@@ -215,17 +218,21 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
 
             # The cached delta is in coordinates relative to the origin cell; only its
             # columns have to be translated, not both full affected-point lists.
-            release_matrix = Matrix{Int64}(undef, 4, size(release_relative, 2))
-            translate_affected_columns!(release_matrix, release_relative, grids, lattice, self_transx, self_transy)
-            block_matrix = Matrix{Int64}(undef, 4, size(block_relative, 2))
-            translate_affected_columns!(block_matrix, block_relative, grids, lattice, self_transx, self_transy)
+            Nrelease = translate_affected_columns!(event_buffer.release, release_relative, grids, lattice, self_transx, self_transy)
+            Nblock = translate_affected_columns!(event_buffer.block, block_relative, grids, lattice, self_transx, self_transy)
+            release_matrix = @view event_buffer.release[:, 1:Nrelease]
+            block_matrix = @view event_buffer.block[:, 1:Nblock]
 
         else
 
             # Legacy path, kept reachable via memoize_delta = false
-            self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-            target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, target_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, target_transx, target_transy)
-            release_matrix, block_matrix = delta_matrix(self_affected_points, target_affected_points)
+            Nself = map_affected_grid_points_to_actual_points!(event_buffer.target_relative, Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
+            self_affected_points = copy(@view event_buffer.target_relative[:, 1:Nself])
+            Ntarget = map_affected_grid_points_to_actual_points!(event_buffer.target_relative, Affected_Points_Rotations, target_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, target_transx, target_transy)
+            target_affected_points = @view event_buffer.target_relative[:, 1:Ntarget]
+            Nrelease, Nblock = delta_matrix!(event_buffer.release, event_buffer.block, event_buffer.keys_self, event_buffer.keys_target, self_affected_points, target_affected_points)
+            release_matrix = @view event_buffer.release[:, 1:Nrelease]
+            block_matrix = @view event_buffer.block[:, 1:Nblock]
 
         end
 
@@ -1071,7 +1078,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
     # Allocate the event-list event buffers
-    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, memoize_delta)
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, memoize_delta)
 
     # TimerOutputs
     end
@@ -1165,7 +1172,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
     # Allocate the event-list event buffers
-    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, memoize_delta)
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, memoize_delta)
 
     # TimerOutputs
     end

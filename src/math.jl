@@ -234,18 +234,44 @@ function calculate_rotation_matrix(rotation_angle, dimension)
 end
 
 # A function to calculate a release and block matrix based on entries only available in the first or second matrix, respectively.
-function delta_matrix(matrix_A, matrix_B)
+#
+# `release` receives the columns of `matrix_A` absent from `matrix_B`, `block` the columns of
+# `matrix_B` absent from `matrix_A`, both in ascending column order with duplicates kept.
+# Both are preallocated buffers; returns the two column counts.
+# Columns are keyed as NTuple{4,Int64} (isbits, hashed without allocating) into two reusable
+# sets that are only emptied, which keeps their capacity.
+function delta_matrix!(release, block, keys_A, keys_B, matrix_A, matrix_B)
 
-    # Create a set for each matrix
-    Bcols = Set(eachcol(matrix_B))
-    Acols = Set(eachcol(matrix_A))
-    
-    # Get the release and block matrix
-    release_matrix = matrix_A[:, @views [i for i in axes(matrix_A,2) if matrix_A[:,i] ∉ Bcols]]
-    block_matrix   = matrix_B[:, @views [i for i in axes(matrix_B,2) if matrix_B[:,i] ∉ Acols]]
+    empty!(keys_A)
+    empty!(keys_B)
+    for column_id in axes(matrix_A, 2)
+        push!(keys_A, (matrix_A[1,column_id], matrix_A[2,column_id], matrix_A[3,column_id], matrix_A[4,column_id]))
+    end
+    for column_id in axes(matrix_B, 2)
+        push!(keys_B, (matrix_B[1,column_id], matrix_B[2,column_id], matrix_B[3,column_id], matrix_B[4,column_id]))
+    end
 
-    # Return the results
-    return release_matrix, block_matrix
+    Nrelease = 0
+    for column_id in axes(matrix_A, 2)
+        if (matrix_A[1,column_id], matrix_A[2,column_id], matrix_A[3,column_id], matrix_A[4,column_id]) ∉ keys_B
+            Nrelease += 1
+            for row_id in 1:4
+                release[row_id, Nrelease] = matrix_A[row_id, column_id]
+            end
+        end
+    end
+
+    Nblock = 0
+    for column_id in axes(matrix_B, 2)
+        if (matrix_B[1,column_id], matrix_B[2,column_id], matrix_B[3,column_id], matrix_B[4,column_id]) ∉ keys_A
+            Nblock += 1
+            for row_id in 1:4
+                block[row_id, Nblock] = matrix_B[row_id, column_id]
+            end
+        end
+    end
+
+    return Nrelease, Nblock
 
 end
 
@@ -279,15 +305,10 @@ function translate_affected_columns!(destination, source, grids, lattice, refere
 end
 
 # Function to map a complete list of affected unique points to the actual points
-function map_affected_grid_points_to_actual_points(Affected_Points_Rotations, molecule_id, grid_id, unique_point_id, rotation_id, grids, lattice, reference_transx, reference_transy)
-
+# Writes into the preallocated `destination` and returns the column count.
+function map_affected_grid_points_to_actual_points!(destination, Affected_Points_Rotations, molecule_id, grid_id, unique_point_id, rotation_id, grids, lattice, reference_transx, reference_transy)
     source = Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id]
-    mapped_points = Matrix{Int64}(undef, 4, size(source, 2))
-    translate_affected_columns!(mapped_points, source, grids, lattice, reference_transx, reference_transy)
-
-    # Return the results
-    return mapped_points
-
+    return translate_affected_columns!(destination, source, grids, lattice, reference_transx, reference_transy)
 end
 
 # A function to find the first column in a matrix 
