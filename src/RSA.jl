@@ -315,9 +315,9 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
 
     # Update the reduced rotation vector and the number of free rotations
     for affected_point in list_affected_points
+        point = rsa_gridpoints[affected_point[1]][affected_point[2]]
         for molecule_id in 1:Nmolecules
-            rsa_gridpoints[affected_point[1]][affected_point[2]].reduced_rotation[molecule_id] = findall(x->x==true, rsa_gridpoints[affected_point[1]][affected_point[2]].bool_rotation[molecule_id])
-            rsa_gridpoints[affected_point[1]][affected_point[2]].Nfree_rotation[molecule_id] = length(rsa_gridpoints[affected_point[1]][affected_point[2]].reduced_rotation[molecule_id])
+            point.Nfree_rotation[molecule_id] = collect_true_indices!(point.reduced_rotation[molecule_id], point.bool_rotation[molecule_id])
         end
     end
 
@@ -443,10 +443,13 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     # Update the reduced diffusion vector and the number of free diffusion targets
     for diffusion_point in list_diffusion_points
         dif_grid, dif_point = diffusion_point
-        dif_ads_molecule = rsa_gridpoints[dif_grid][dif_point].adsorbed_molecule
+        point = rsa_gridpoints[dif_grid][dif_point]
+        dif_ads_molecule = point.adsorbed_molecule
+        reduced = point.reduced_diffusion[dif_ads_molecule]
+        bools = point.bool_diffusion[dif_ads_molecule]
+        counts = point.Ntarget_diffusion[dif_ads_molecule]
         for grid_id in 1:Ngrids
-            rsa_gridpoints[dif_grid][dif_point].reduced_diffusion[dif_ads_molecule][grid_id] = findall(x->x==true, rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id])
-            rsa_gridpoints[dif_grid][dif_point].Ntarget_diffusion[dif_ads_molecule][grid_id] = length(rsa_gridpoints[dif_grid][dif_point].reduced_diffusion[dif_ads_molecule][grid_id])
+            counts[grid_id] = collect_true_indices!(reduced[grid_id], bools[grid_id])
         end
     end
 

@@ -233,6 +233,20 @@ function calculate_rotation_matrix(rotation_angle, dimension)
 
 end
 
+# A function to write the indices of all true entries of `flags` into `indices`, returning how many there are.
+function collect_true_indices!(indices::Vector{Int64}, flags::AbstractVector{Bool})
+    resize!(indices, length(flags))
+    count = 0
+    for index in eachindex(flags)
+        if flags[index]
+            count += 1
+            indices[count] = index
+        end
+    end
+    resize!(indices, count)
+    return count
+end
+
 # A function to calculate a release and block matrix based on entries only available in the first or second matrix, respectively.
 #
 # `release` receives the columns of `matrix_A` absent from `matrix_B`, `block` the columns of
