@@ -250,3 +250,26 @@ end
     @test rsa_results[1000].stepinfo[:,1] == [6936, 6936, 0, 0, 0, 1, 468, 1, 1, 0, 1, 0]
     @test rsa_results[1000].stepinfo[:,steps - 1] == [1, 1, 0, 0, 0, 1, 92, 1, 1, 0, 2, 0]
 end
+
+@testset "Delta cache approaches" begin
+    # Rotations, diffusions and conformer changes use cached delta matrices by default.
+    # The fallback (memoize_delta = false) computes them in every step; both have to give the same trajectories.
+    for inputfile_path in ["./05-Rotations/input.inp", "./06-Diffusions/input.inp", "./07-Conformer-Changes/input.inp"]
+        NRuns = 5
+        Random.seed!(2024)
+        results_cached, = perform_multiple_rsa_runs(NRuns, inputfile_path)
+        Random.seed!(2024)
+        results_fallback, = perform_multiple_rsa_runs(NRuns, inputfile_path; memoize_delta = false)
+
+        # The runs contain events that use the delta (rotation, diffusion or conformer change)
+        @test any(sum(counts[2:4]) > 0 for result in results_cached for counts in result.Nevents)
+
+        for run_id in 1:NRuns
+            @test results_cached[run_id].Nsteps == results_fallback[run_id].Nsteps
+            @test results_cached[run_id].Nevents == results_fallback[run_id].Nevents
+            @test results_cached[run_id].status == results_fallback[run_id].status
+            @test results_cached[run_id].stepinfo == results_fallback[run_id].stepinfo
+            @test results_cached[run_id].randomseed == results_fallback[run_id].randomseed
+        end
+    end
+end

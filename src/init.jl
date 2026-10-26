@@ -37,6 +37,9 @@ end
 # Contained information are:
 # Number of possible events, Total rate constant of all events, possible rotations for an adsorbing adsorbate
 mutable struct gridpoint_struct
+    # Nevents, Nads, Ndif, Nrot, Ncon, Trateconst and Trateconst_ads are mirrored in the event buffer
+    # (running totals and dense rate arrays). Change them only in update_rate_constants_and_events!,
+    # or before refresh_rate_mirror! rebuilds the mirror at the start of a run; otherwise the mirror becomes stale.
     Nevents::Int64 # Total number of possible events
     Nads::Int64
     Ndif::Int64
@@ -71,9 +74,134 @@ mutable struct gridpoint_struct
     Nblocked_rotation::Vector{Vector{Int64}} # Vector counting how often a rotation was blocked by an adjacent adsorbate or by the adsorbate
 end
 
+# Reusable scratch buffers for the event-list update.
+#
+# Fields
+# - `counter`: increasing visit stamp; incremented once per update.
+# - `affected_stamp`, `diffusion_stamp`: `[grid][point]` last-visit stamps.
+# - `affected_points`, `diffusion_points`: `(grid, point)` worklists.
+# - `diffusion_possible`: whether any diffusion event is possible in this system; if not, step 3 of the event-list update is skipped.
+# - `memoize_delta`: whether to cache the calculated delta matrices in the event updates.
+# - `delta_cache: the cache of previously computed delta matrices. keyed by the transition descriptor: (event type, self molecule/grid/unique point/rotation, target molecule/grid/unique point/rotation, relative cell offset x, y).
+# - `trate`, `trate_ads`: dense mirrors of the per-point total rate constants, for summing over contiguous memory instead of dereferencing every gridpoint_struct.
+# - `release`, `block`, `keys_self`, `keys_target`, `target_relative`: output buffers for the affected-point pipeline, sized once at the worst-case width of Affected_Points_Rotations.
+# - `total_nads`, `total_ndif`, `total_nrot`, `total_ncon`, `total_nevents`: running totals of the event counters.
+# Upper bound on cached transitions is set by `rsa_delta_cache_max_entries`.
+const rsa_delta_key = NTuple{11,Int64}
+const rsa_delta_cache_max_entries = 20_000
+mutable struct rsa_event_buffer_struct
+    counter::Int64
+    affected_stamp::Vector{Vector{Int64}}
+    diffusion_stamp::Vector{Vector{Int64}}
+    affected_points::Vector{Tuple{Int64,Int64}}
+    diffusion_points::Vector{Tuple{Int64,Int64}}
+    diffusion_possible::Bool
+    memoize_delta::Bool
+    delta_cache::Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}
+    trate::Vector{Vector{Float64}}
+    trate_ads::Vector{Vector{Float64}}
+    release::Matrix{Int64}
+    block::Matrix{Int64}
+    keys_self::Set{NTuple{4,Int64}}
+    keys_target::Set{NTuple{4,Int64}}
+    target_relative::Matrix{Int64}
+    total_nads::Int64
+    total_ndif::Int64
+    total_nrot::Int64
+    total_ncon::Int64
+    total_nevents::Int64
+end
+
 #
 # Function definitions
 #
+
+# A function to allocate the event buffers for the event-list update.
+function rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, rate_constants_info, memoize_delta::Bool = true)
+
+    # Worst-case width of the affected-point matrices. Every entry of
+    # Affected_Points_Rotations is allocated, even for molecule/grid combinations that
+    # never occur, so this bounds the release, block and target buffers alike.
+    max_affected = 0
+    for per_molecule in Affected_Points_Rotations
+        for per_grid in per_molecule
+            for per_unique_point in per_grid
+                for affected_matrix in per_unique_point
+                    max_affected = max(max_affected, size(affected_matrix, 2))
+                end
+            end
+        end
+    end
+
+    # create_neighbour_list skips every combination with a diffusion rate constant <= 0,
+    # so if none is positive then target_diffusion and origin_diffusion are empty for
+    # every point and step 3 cannot change anything.
+    diffusion_possible = any(>(0.0), rate_constants_info.dif)
+
+    return rsa_event_buffer_struct(0,
+                              [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              [zeros(Int64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              Vector{Tuple{Int64,Int64}}(),
+                              Vector{Tuple{Int64,Int64}}(),
+                              diffusion_possible,
+                              memoize_delta,
+                              Dict{rsa_delta_key,Tuple{Matrix{Int64},Matrix{Int64}}}(),
+                              [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              [zeros(Float64, grids[grid_id].Npoints) for grid_id in 1:Ngrids],
+                              Matrix{Int64}(undef, 4, max_affected),
+                              Matrix{Int64}(undef, 4, max_affected),
+                              Set{NTuple{4,Int64}}(),
+                              Set{NTuple{4,Int64}}(),
+                              Matrix{Int64}(undef, 4, max_affected),
+                              0, 0, 0, 0, 0)
+end
+
+# A function to rebuild the dense rate mirrors and the running event-counter totals from the current grid state.
+# Called once at the start of every run.
+function refresh_rate_mirror!(event_buffer, rsa_gridpoints, Ngrids, grids)
+
+    total_nads = 0
+    total_ndif = 0
+    total_nrot = 0
+    total_ncon = 0
+    total_nevents = 0
+
+    for grid_id in 1:Ngrids
+        subgrid = rsa_gridpoints[grid_id]
+        trate = event_buffer.trate[grid_id]
+        trate_ads = event_buffer.trate_ads[grid_id]
+        for point_id in 1:grids[grid_id].Npoints
+            gridpoint = subgrid[point_id]
+            trate[point_id] = gridpoint.Trateconst
+            trate_ads[point_id] = gridpoint.Trateconst_ads
+            total_nads += gridpoint.Nads
+            total_ndif += gridpoint.Ndif
+            total_nrot += gridpoint.Nrot
+            total_ncon += gridpoint.Ncon
+            total_nevents += gridpoint.Nevents
+        end
+    end
+
+    event_buffer.total_nads = total_nads
+    event_buffer.total_ndif = total_ndif
+    event_buffer.total_nrot = total_nrot
+    event_buffer.total_ncon = total_ncon
+    event_buffer.total_nevents = total_nevents
+
+    return nothing
+
+end
+
+# A function to record a grid point in a worklist unless it is already present.
+# Returns true if the point was newly added.
+@inline function mark_point!(worklist, stamps, stamp, grid, point)
+    if stamps[grid][point] != stamp
+        stamps[grid][point] = stamp
+        push!(worklist, (grid, point))
+        return true
+    end
+    return false
+end
 
 # A function to define all grid strcut values that are identical for every point of a given grid type. 
 function grid_level_initials(grid_id, Ngrids, Nmolecules, molecules, rate_constants_info)
@@ -442,8 +570,8 @@ function check_for_overlap(molecule_coords_A, molecule_coords_B, molecule_elemen
             # Calculate distance (Difference --> convert to fractional --> check pbc --> convert back --> distance)
             difference = molecule_coords_A[:,a] - molecule_coords_B[:,b]
             
-            # Apply pbc
-            difference = apply_pbc_to_coordinates(difference, fulllattice, invfulllattice)
+            # Apply minimum image convention
+            difference = apply_minimum_image_convention(difference, fulllattice, invfulllattice)
 
             # Calculate distance
             distance = norm(difference[1:2])
@@ -525,8 +653,9 @@ function check_for_atom_overlap(points_difference_vector, points_difference, mol
             sum_vdw = vdw_1 + vdw_2
 
             # Calculate the difference between the atoms (vector in fractional coordinates)
+            # Use minimum image convention to get the shortest distance
             fractional_distance_vector = points_difference_vector + rotation_difference_matrix[atom_1_id,atom_2_id]
-            cartesian_distance_vector = apply_pbc_to_fractional_coordinates(fractional_distance_vector, lattice.transcellvectors)
+            cartesian_distance_vector = minimum_image_from_fractional_coordinates(fractional_distance_vector, lattice.transcellvectors)
             # Only consider the distance in plane for RSA
             if overlap_2d
                 atoms_distance = norm(cartesian_distance_vector[1:2])
@@ -873,10 +1002,11 @@ function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids,
 
                                 # Prescreening: Distance between gridpoints vs. molecular radius
                                 # the translation_distance_vectors for the "point_id" is not needed as this is always a unique point and the distance vector therefor euqal to zero
+                                # Use minimum image convention to get the shortest distance between the two gridpoints
                                 mapping = grids[Tgrid_id].mapping[:,Tpoint_id]
                                 fractional_points_difference_vector = unit_cell_gridpoints_difference[grid_id,Tgrid_id][point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                                cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
+                                cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
 
                                 if overlap_2d
                                     points_difference = norm(cartesian_points_difference_vector[1:2])
@@ -1027,10 +1157,11 @@ function create_neighbour_list(Nmolecules, Ngrids, rate_constants_info, lattice,
                         end
 
                         # Get the distance between the grid points
+                        # Use minimum image convention to get the shortest distance between the two gridpoints
                         mapping = grids[end_grid_id].mapping[:,end_point_id]
                         fractional_points_difference_vector = unit_cell_gridpoints_difference[start_grid_id,end_grid_id][start_point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                        cartesian_points_difference_vector = apply_pbc_to_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
+                        cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
 
                         if overlap_2d
                             distance = norm(cartesian_points_difference_vector[1:2])
@@ -1108,7 +1239,7 @@ function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, event
 end
 
 # A function to seed a clean grid with the final configuration of a previous run.
-function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, timer)
+function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, event_buffer, timer)
 
     # Nothing to seed for a normal run
     if size(seed, 2) == 0
@@ -1137,7 +1268,7 @@ function seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, 
         rsa_run_results.status = hcat(rsa_run_results.status, [selected_molecule, selected_grid_type, selected_grid_point, selected_rotation])
 
         # Update event list
-        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
+        @timeit timer "Seed-Update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, 1, 0, selected_rotation, 0, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
     end
 
     # Return nothing
@@ -1171,6 +1302,33 @@ function seed_adsorbate_grids!(molecules, restart_runs, origin_rsa_results)
 
     # Return mutated argument
     return molecules
+
+end
+
+# A function to resolve the origin runs requested for a restart calculation
+# A negative run number selects all runs of the selected generation
+function resolve_restart_runs!(events, origin_rsa_results)
+
+    # Get the number of runs available in the selected generation
+    Norigin_runs = length(origin_rsa_results)
+
+    # Replace the selection by all available runs in case a negative run number is given
+    if any(<(0), events.restart_runs)
+        events.restart_runs = collect(1:Norigin_runs)
+        return events
+    end
+
+    # Check that every selected run is available in the selected generation
+    for origin_id in events.restart_runs
+        if origin_id < 1 || origin_id > Norigin_runs
+            println("The following restart run is not available in generation " * string(events.restart_generation) * ": " * string(origin_id))
+            println("The selected generation contains " * string(Norigin_runs) * " runs.")
+            error("Restart Error")
+        end
+    end
+
+    # Return new event struct
+    return events
 
 end
 

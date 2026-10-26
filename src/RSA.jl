@@ -83,9 +83,52 @@ end
 # Function definitions
 #
 
+# Release/block delta for one state transition, computed once and cached.
+#
+# The delta does not actually depend on where in the lattice the event happens. For a
+# rotation or a conformer change the two orientations sit on the same grid point; for a
+# diffusion they sit a fixed number of cells apart. So the delta is a function of the
+# transition alone -- (event type, both orientations, relative cell offset) -- and can be
+# computed once in coordinates relative to the origin cell and reused everywhere. Each
+# use then only translates the delta columns.
+#
+# Returns the cached (release, block) pair in relative coordinates. Both are owned by
+# the cache and must not be mutated by the caller.
+function cached_affected_delta(event_buffer, delta_key, Affected_Points_Rotations,
+                               self_molecule, self_grid, self_unique_point, self_rotation,
+                               target_molecule, target_grid, target_unique_point, target_rotation,
+                               offset_transx, offset_transy, grids, lattice)
+
+    entry = get(event_buffer.delta_cache, delta_key, nothing)
+    if entry !== nothing
+        return entry
+    end
+
+    # Self is taken straight from the event list: its stored point indices are already
+    # relative to the origin cell. The target is brought into the same frame by
+    # translating it by the relative cell offset.
+    self_relative = Affected_Points_Rotations[self_molecule][self_grid][self_unique_point][self_rotation]
+    Ntarget = map_affected_grid_points_to_actual_points!(event_buffer.target_relative, Affected_Points_Rotations, target_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, offset_transx, offset_transy)
+    target_relative = @view event_buffer.target_relative[:, 1:Ntarget]
+
+    # This runs once per distinct transition, so the copies below are cheap; they have to
+    # be copies because the buffers are reused on the next miss.
+    Nrelease, Nblock = delta_matrix!(event_buffer.release, event_buffer.block, event_buffer.keys_self, event_buffer.keys_target, self_relative, target_relative)
+    entry = (event_buffer.release[:, 1:Nrelease], event_buffer.block[:, 1:Nblock])
+
+    # Bounded cache: past the cap the delta is recomputed per use instead of stored, so
+    # a system with an unexpectedly large transition space cannot exhaust memory.
+    if length(event_buffer.delta_cache) < rsa_delta_cache_max_entries
+        event_buffer.delta_cache[delta_key] = entry
+    end
+
+    return entry
+
+end
+
 # Update the event list based on the selected event
 # Update: Number of possible events, 
-function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
+function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
 
      # Strategy:
      # + Update the bool_rotation vector (storing the number of accessible rotations) all the time
@@ -106,9 +149,19 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     self_point = selected_grid_point
     self_molecule = selected_molecule
     self_rotation = rsa_gridpoints[self_grid][self_point].adsorbed_rotation
-    self_unique_point, self_transx, self_transy = grids[self_grid].mapping[1:3, self_point]
+    self_mapping = grids[self_grid].mapping
+    self_unique_point = self_mapping[1, self_point]
+    self_transx = self_mapping[2, self_point]
+    self_transy = self_mapping[3, self_point]
     
-    # Information on the target point based on the selected event
+    # Information on the target based on the selected event
+    # By default the target is the adsorbate itself; every event changes only part of it
+    target_molecule = self_molecule
+    target_grid = self_grid
+    target_point = self_point
+    target_unique_point = self_unique_point
+    target_transx = self_transx
+    target_transy = self_transy
     if selected_event_type == 1
         target_rotation = selected_event
     elseif selected_event_type == 2
@@ -117,72 +170,79 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
         target_rotation = selected_event_2
         target_grid = selected_subevent
         target_point = selected_event
-        target_unique_point, target_transx, target_transy = grids[target_grid].mapping[1:3, target_point]
+        target_mapping = grids[target_grid].mapping
+        target_unique_point = target_mapping[1, target_point]
+        target_transx = target_mapping[2, target_point]
+        target_transy = target_mapping[3, target_point]
     elseif selected_event_type == 4
         target_rotation = selected_event
         target_molecule = selected_subevent
     end
 
-    # Self and target point are added to the affected points list
-    list_affected_points = Set{Vector{Int64}}()
-    push!(list_affected_points, [self_grid, self_point])
-    if selected_event_type == 3
-        push!(list_affected_points, [target_grid, target_point])
-    end
-
-    # Get the affected points for self and targets
-    # These points are directly mapped to the actual points
-    if selected_event_type == 1
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = Matrix{Int64}(undef,4,0)
-    elseif selected_event_type == 2
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
-    elseif selected_event_type == 3
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, target_transx, target_transy)
-    elseif selected_event_type == 4
-        self_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
-        target_affected_points = map_affected_grid_points_to_actual_points(Affected_Points_Rotations, target_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
-    end
-
-    # Transform the affected points from unique points to actual points
-    #=
-    for point_id in axes(self_affected_points,2)
-        mapping_unique_point, mapping_transx, mapping_transy = grids[self_affected_points[2,point_id]].mapping[1:3, self_affected_points[3,point_id]]
-        new_transx = mapping_transx + self_transx
-        new_transy = mapping_transy + self_transy
-        affected_point = map_translation_to_gridpoint(mapping_unique_point, grids[self_affected_points[2,point_id]].Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
-        self_affected_points[3,point_id] = affected_point
-    end
-    for point_id in axes(target_affected_points,2)
-        if selected_event_type == 3
-            mapping_unique_point, mapping_transx, mapping_transy = grids[target_affected_points[2,point_id]].mapping[1:3, target_affected_points[3,point_id]]
-            new_transx = mapping_transx + target_transx
-            new_transy = mapping_transy + target_transy
-            affected_point = map_translation_to_gridpoint(mapping_unique_point, grids[target_affected_points[2,point_id]].Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
-            target_affected_points[3,point_id] = affected_point
-        else
-            mapping_unique_point, mapping_transx, mapping_transy = grids[target_affected_points[2,point_id]].mapping[1:3, target_affected_points[3,point_id]]
-            new_transx = mapping_transx + self_transx
-            new_transy = mapping_transy + self_transy
-            affected_point = map_translation_to_gridpoint(mapping_unique_point, grids[target_affected_points[2,point_id]].Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
-            target_affected_points[3,point_id] = affected_point
-        end
-    end
-    =#
-
-    #return self_affected_points, target_affected_points
-
-    # Create a delta list
-    if selected_event_type != 1
-        release_matrix, block_matrix = delta_matrix(self_affected_points, target_affected_points) 
-    else
-        release_matrix = Matrix{Int64}(undef, 4, 0)
-        block_matrix = self_affected_points
-    end
+    # Cell offset between adsorbate and target (only non-zero for a diffusion)
+    # Reduced modulo the cell counts as in map_translation_to_gridpoint, which keeps the delta cache keys bounded
+    offset_transx = mod(target_transx - self_transx, lattice.Ncellx)
+    offset_transy = mod(target_transy - self_transy, lattice.Ncelly)
     
-    #return release_matrix, block_matrix
+    # The stamp counter is used to identify points which need to be updated
+    event_buffer.counter += 1
+    visit_stamp = event_buffer.counter
+    affected_stamp = event_buffer.affected_stamp
+    diffusion_stamp = event_buffer.diffusion_stamp
+    list_affected_points = event_buffer.affected_points
+    list_diffusion_points = event_buffer.diffusion_points
+    empty!(list_affected_points)
+    empty!(list_diffusion_points)
+
+    # Self and target point are added to the affected points list
+    mark_point!(list_affected_points, affected_stamp, visit_stamp, self_grid, self_point)
+    if selected_event_type == 3
+        mark_point!(list_affected_points, affected_stamp, visit_stamp, target_grid, target_point)
+    end
+
+    # Get the release and block lists
+    #
+    # An adsorption has nothing to release and blocks everything its own orientation
+    # covers, so it needs the mapped self list directly and no delta at all.
+    if selected_event_type == 1
+
+        Nblock = map_affected_grid_points_to_actual_points!(event_buffer.block, Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, target_rotation, grids, lattice, self_transx, self_transy)
+        release_matrix = @view event_buffer.release[:, 1:0]
+        block_matrix = @view event_buffer.block[:, 1:Nblock]
+
+    else
+
+        if event_buffer.memoize_delta
+
+            delta_key = (selected_event_type, self_molecule, self_grid, self_unique_point, self_rotation,
+                         target_molecule, target_grid, target_unique_point, target_rotation,
+                         offset_transx, offset_transy)
+            release_relative, block_relative = cached_affected_delta(event_buffer, delta_key, Affected_Points_Rotations,
+                                                                    self_molecule, self_grid, self_unique_point, self_rotation,
+                                                                    target_molecule, target_grid, target_unique_point, target_rotation,
+                                                                    offset_transx, offset_transy, grids, lattice)
+
+            # The cached delta is in coordinates relative to the origin cell; only its
+            # columns have to be translated, not both full affected-point lists.
+            Nrelease = translate_affected_columns!(event_buffer.release, release_relative, grids, lattice, self_transx, self_transy)
+            Nblock = translate_affected_columns!(event_buffer.block, block_relative, grids, lattice, self_transx, self_transy)
+            release_matrix = @view event_buffer.release[:, 1:Nrelease]
+            block_matrix = @view event_buffer.block[:, 1:Nblock]
+
+        else
+
+            # Legacy path, kept reachable via memoize_delta = false
+            Nself = map_affected_grid_points_to_actual_points!(event_buffer.target_relative, Affected_Points_Rotations, self_molecule, self_grid, self_unique_point, self_rotation, grids, lattice, self_transx, self_transy)
+            self_affected_points = copy(@view event_buffer.target_relative[:, 1:Nself])
+            Ntarget = map_affected_grid_points_to_actual_points!(event_buffer.target_relative, Affected_Points_Rotations, target_molecule, target_grid, target_unique_point, target_rotation, grids, lattice, target_transx, target_transy)
+            target_affected_points = @view event_buffer.target_relative[:, 1:Ntarget]
+            Nrelease, Nblock = delta_matrix!(event_buffer.release, event_buffer.block, event_buffer.keys_self, event_buffer.keys_target, self_affected_points, target_affected_points)
+            release_matrix = @view event_buffer.release[:, 1:Nrelease]
+            block_matrix = @view event_buffer.block[:, 1:Nblock]
+
+        end
+
+    end
 
     #
     # Step 1 - Update local information
@@ -233,236 +293,172 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     for release_id in axes(release_matrix,2)
         
         # Update the point
-        #=
-        if release_matrix[4, release_id] == -1
-            for rotation_id in 1:molecules[release_matrix[1, release_id]].Nrotations
-                rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].Nblocked_rotation[release_matrix[1, release_id]][rotation_id] -= 1
-                if rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].Nblocked_rotation[release_matrix[1, release_id]][rotation_id] == 0
-                    rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].bool_rotation[release_matrix[1, release_id]][rotation_id] = true
-                end
-            end
-        else
-        =#
-            rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].Nblocked_rotation[release_matrix[1, release_id]][release_matrix[4, release_id]] -= 1
-            if rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].Nblocked_rotation[release_matrix[1, release_id]][release_matrix[4, release_id]] == 0
-                rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].bool_rotation[release_matrix[1, release_id]][release_matrix[4, release_id]] = true
-            end
-        #end
+        rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].Nblocked_rotation[release_matrix[1, release_id]][release_matrix[4, release_id]] -= 1
+        if rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].Nblocked_rotation[release_matrix[1, release_id]][release_matrix[4, release_id]] == 0
+            rsa_gridpoints[release_matrix[2, release_id]][release_matrix[3, release_id]].bool_rotation[release_matrix[1, release_id]][release_matrix[4, release_id]] = true
+        end
         
         # Add the point to the list of affected points
-        new_element = release_matrix[2:3, release_id]
-        if new_element ∉ list_affected_points
-            push!(list_affected_points, new_element)
-        end
+        mark_point!(list_affected_points, affected_stamp, visit_stamp, release_matrix[2, release_id], release_matrix[3, release_id])
 
     end
     for block_id in axes(block_matrix,2)
 
         # Update the points
-        #=
-        if block_matrix[4, block_id] == -1
-            for rotation_id in 1:molecules[block_matrix[1, block_id]].Nrotations
-                rsa_gridpoints[block_matrix[2, block_id]][block_matrix[3, block_id]].Nblocked_rotation[block_matrix[1, block_id]][rotation_id] += 1
-                rsa_gridpoints[block_matrix[2, block_id]][block_matrix[3, block_id]].bool_rotation[block_matrix[1, block_id]][rotation_id] = false
-            end
-        else
-        =#
-            rsa_gridpoints[block_matrix[2, block_id]][block_matrix[3, block_id]].Nblocked_rotation[block_matrix[1, block_id]][block_matrix[4, block_id]] += 1
-            rsa_gridpoints[block_matrix[2, block_id]][block_matrix[3, block_id]].bool_rotation[block_matrix[1, block_id]][block_matrix[4, block_id]] = false
-        #end
+        rsa_gridpoints[block_matrix[2, block_id]][block_matrix[3, block_id]].Nblocked_rotation[block_matrix[1, block_id]][block_matrix[4, block_id]] += 1
+        rsa_gridpoints[block_matrix[2, block_id]][block_matrix[3, block_id]].bool_rotation[block_matrix[1, block_id]][block_matrix[4, block_id]] = false
 
         # Add the point to the list of affected points
-        new_element = block_matrix[2:3, block_id]
-        if new_element ∉ list_affected_points
-            push!(list_affected_points, new_element)
-        end
+        mark_point!(list_affected_points, affected_stamp, visit_stamp, block_matrix[2, block_id], block_matrix[3, block_id])
 
     end
-
-
-    #return list_affected_points
-
-    #println("Affected points list")
-    #println(list_affected_points)
 
     # Update the reduced rotation vector and the number of free rotations
     for affected_point in list_affected_points
+        point = rsa_gridpoints[affected_point[1]][affected_point[2]]
         for molecule_id in 1:Nmolecules
-            rsa_gridpoints[affected_point[1]][affected_point[2]].reduced_rotation[molecule_id] = findall(x->x==true, rsa_gridpoints[affected_point[1]][affected_point[2]].bool_rotation[molecule_id])
-            rsa_gridpoints[affected_point[1]][affected_point[2]].Nfree_rotation[molecule_id] = length(rsa_gridpoints[affected_point[1]][affected_point[2]].reduced_rotation[molecule_id])
+            point.Nfree_rotation[molecule_id] = collect_true_indices!(point.reduced_rotation[molecule_id], point.bool_rotation[molecule_id])
         end
     end
 
 
-    #
-    # Step 3 - Update the bool_diffusion vector for all grid points
-    # Here, we have to consider all diffusion targets of the self and target point, and all affected points 
-    # So simply loop over list_affected_points as all these points are included there
-    # 
+    # Step 3 is skipped entirely for systems without diffusion: every diffusion list is
+    # empty, so building the worklist, refreshing bool_diffusion and rebuilding
+    # reduced_diffusion are all no-ops, and list_diffusion_points stays empty so the
+    # step 4 union below is unaffected.
+    if event_buffer.diffusion_possible
 
-    # Create a list of all points to update
-    list_diffusion_points = Set{Vector{Int64}}()
-    for affected_point in list_affected_points
-        #affected_point = list_affected_points[:,affected_point_id]
+        #
+        # Step 3 - Update the bool_diffusion vector for all grid points
+        # Here, we have to consider all diffusion targets of the self and target point, and all affected points 
+        # So simply loop over list_affected_points as all these points are included there
+        # 
+
+        # Create a list of all points to update
+        for affected_point in list_affected_points
         
-        # Add the affected point to the list
-        if rsa_gridpoints[affected_point[1]][affected_point[2]].bool_occupied == true
-            if affected_point ∉ list_diffusion_points
-                push!(list_diffusion_points, affected_point)
-            end
-        end
+            affected_grid = affected_point[1]
+            affected_point_id = affected_point[2]
+            affected_struct = rsa_gridpoints[affected_grid][affected_point_id]
 
-        # Add diffusion targets to the list
-        # Here I work with the origin_diffusion instead of the target_diffusion as diffusion events might be possible only in one direction
-        for molecule_id in 1:Nmolecules
-            for diffusion_grid_id in 1:Ngrids
-                for diffusion_point_id in eachindex(rsa_gridpoints[affected_point[1]][affected_point[2]].origin_diffusion[molecule_id][diffusion_grid_id])
-                    
-                    diffusion_point = [diffusion_grid_id, rsa_gridpoints[affected_point[1]][affected_point[2]].origin_diffusion[molecule_id][diffusion_grid_id][diffusion_point_id]]
-                    if rsa_gridpoints[diffusion_point[1]][diffusion_point[2]].bool_occupied == true
-                        if rsa_gridpoints[diffusion_point[1]][diffusion_point[2]].adsorbed_molecule == molecule_id
-                            if diffusion_point ∉ list_diffusion_points
-                                push!(list_diffusion_points, diffusion_point)
+            # Add the affected point to the list
+            if affected_struct.bool_occupied == true
+                mark_point!(list_diffusion_points, diffusion_stamp, visit_stamp, affected_grid, affected_point_id)
+            end
+
+            # Add diffusion targets to the list
+            # Here I work with the origin_diffusion instead of the target_diffusion as diffusion events might be possible only in one direction
+            for molecule_id in 1:Nmolecules
+                origin_diffusion = affected_struct.origin_diffusion[molecule_id]
+                for diffusion_grid_id in 1:Ngrids
+                    origin_points = origin_diffusion[diffusion_grid_id]
+                    for diffusion_point_id in eachindex(origin_points)
+
+                        origin_point = origin_points[diffusion_point_id]
+                        origin_struct = rsa_gridpoints[diffusion_grid_id][origin_point]
+                        if origin_struct.bool_occupied == true
+                            if origin_struct.adsorbed_molecule == molecule_id
+                                mark_point!(list_diffusion_points, diffusion_stamp, visit_stamp, diffusion_grid_id, origin_point)
                             end
                         end
-                    end
 
+                    end
                 end
             end
+        
         end
+
+        #return list_diffusion_points
+
+        # For every diffusion target update the bool_diffusion vector
+        # Only updated for the molecule type currently adsorbed
+        # Only checked for points in the list_affected_points (thats not working!)
+        for diffusion_point in list_diffusion_points
+            dif_grid, dif_point = diffusion_point
+            dif_ads_molecule = rsa_gridpoints[dif_grid][dif_point].adsorbed_molecule
+            dif_rotation = rsa_gridpoints[dif_grid][dif_point].adsorbed_rotation
+            dif_target_points = rsa_gridpoints[dif_grid][dif_point].target_diffusion[dif_ads_molecule]
+            dif_mapping = grids[dif_grid].mapping
+            dif_unique_point = dif_mapping[1, dif_point]
+            dif_transx = dif_mapping[2, dif_point]
+            dif_transy = dif_mapping[3, dif_point]
+
+            # The affected-points matrix of this adsorbate is fixed for the loops below
+            dif_affected_points = Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation]
         
-    end
+            # Loop over grids
+            for grid_id in 1:Ngrids
 
-    #return list_diffusion_points
+                # Loop over points
+                for point_id in eachindex(dif_target_points[grid_id])
 
-    # For every diffusion target update the bool_diffusion vector
-    # Only updated for the molecule type currently adsorbed
-    # Only checked for points in the list_affected_points (thats not working!)
-    for diffusion_point in list_diffusion_points
-        dif_grid, dif_point = diffusion_point
-        dif_ads_molecule = rsa_gridpoints[dif_grid][dif_point].adsorbed_molecule
-        dif_rotation = rsa_gridpoints[dif_grid][dif_point].adsorbed_rotation
-        dif_target_points = rsa_gridpoints[dif_grid][dif_point].target_diffusion[dif_ads_molecule]
-        dif_unique_point, dif_transx, dif_transy = grids[dif_grid].mapping[1:3, dif_point]
-        
-        # Loop over grids
-        for grid_id in 1:Ngrids
+                    # Get the target grid point
+                    target_point = dif_target_points[grid_id][point_id]
 
-            # Loop over points
-            for point_id in eachindex(dif_target_points[grid_id])
+                        # Set the default
+                        rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
 
-                # Get the target grid point
-                target_point = dif_target_points[grid_id][point_id]
-
-                # Check whether the point is in the list of affected points --> as the target points are also changed in other stepts (and I don't update the diffusion for unoccupied steps) I have to check all targets here.
-                #if [grid_id, target_point] in eachcol(list_affected_points)
-
-                    # Set the default
-                    rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
-
-                    # Is the target point occupied?
-                    if rsa_gridpoints[grid_id][target_point].bool_occupied == true
-                        rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
-                        continue
-                    end
-
-                    # New version
-                    # Only consider the current rotation of the adsorbate
-                    # Is the current rotation blocked
-                    if rsa_gridpoints[grid_id][target_point].bool_rotation[dif_ads_molecule][dif_rotation] == false
-
-                        # Is the rotation blocked only once
-                        if rsa_gridpoints[grid_id][target_point].Nblocked_rotation[dif_ads_molecule][dif_rotation] == 1
-
-                            # Is the rotation blocked by the current adsorbate
-                            blocked_unique_point, blocked_transx, blocked_transy = grids[grid_id].mapping[1:3, target_point]
-                            corrected_transx = blocked_transx - dif_transx
-                            corrected_transy = blocked_transy - dif_transy
-                            corrected_point = map_translation_to_gridpoint(blocked_unique_point, grids[grid_id].Nuniquepoints, corrected_transx, lattice.Ncellx, corrected_transy, lattice.Ncelly)
-
-                            if [dif_ads_molecule, grid_id, corrected_point, dif_rotation] in eachcol(Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation])
-                                rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
-                                continue
-                            #elseif [dif_ads_molecule, grid_id, corrected_point, -1] in eachcol(Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation])
-                            #    rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
-                            #    continue
-                            else
-                                rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
-                                continue
-                            end
-
-                        else
-                            
-                            # This rotation is blocked multiple times; a diffusion is not possible
+                        # Is the target point occupied?
+                        if rsa_gridpoints[grid_id][target_point].bool_occupied == true
                             rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
                             continue
-
                         end
 
-                    end
+                        # New version
+                        # Only consider the current rotation of the adsorbate
+                        # Is the current rotation blocked
+                        if rsa_gridpoints[grid_id][target_point].bool_rotation[dif_ads_molecule][dif_rotation] == false
 
-                    # Old version
-                    # Check for a single rotation blocked by the current adsorbate and enable a combination of diffusion and rotation
-                    # Problem: In the selection of the RSA any information regarding which rotation should be selected for a diffusion is missing!
-                    # Is the number of free rotations zero
-                    #= 
-                    if rsa_gridpoints[grid_id][target_point].Nfree_rotation[dif_ads_molecule] == 0
+                            # Is the rotation blocked only once
+                            if rsa_gridpoints[grid_id][target_point].Nblocked_rotation[dif_ads_molecule][dif_rotation] == 1
 
-                        # Check for every rotation how often it is blocked
-                        # As Nfree rotation is zero, all elements are larger than 0
-                        # Find all elements equal 1. If there is none, all elements are at least equal or larger than 2
-                        elements_equal_1 = findall(x -> x == 1, rsa_gridpoints[grid_id][target_point].Nblocked_rotation[dif_ads_molecule])
+                                # Is the rotation blocked by the current adsorbate
+                                blocked_mapping = grids[grid_id].mapping
+                                blocked_unique_point = blocked_mapping[1, target_point]
+                                blocked_transx = blocked_mapping[2, target_point]
+                                blocked_transy = blocked_mapping[3, target_point]
+                                corrected_transx = blocked_transx - dif_transx
+                                corrected_transy = blocked_transy - dif_transy
+                                corrected_point = map_translation_to_gridpoint(blocked_unique_point, grids[grid_id].Nuniquepoints, corrected_transx, lattice.Ncellx, corrected_transy, lattice.Ncelly)
 
-                        if isempty(elements_equal_1)
-                            rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
-                            continue
-                        else
-                            # Default
-                            rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
-
-                            # Transform the blocked point to its unique point
-                            # Take care that the translation to the dif_point remains correct
-                            blocked_unique_point, blocked_transx, blocked_transy = grids[grid_id].mapping[1:3, target_point]
-                            corrected_transx = blocked_transx - dif_transx
-                            corrected_transy = blocked_transy - dif_transy
-                            corrected_point = map_translation_to_gridpoint(blocked_unique_point, grids[grid_id].Nuniquepoints, corrected_transx, lattice.Ncellx, corrected_transy, lattice.Ncelly)
-
-                            # Check for every point only blocked by one adsorbate, whether it is blocked by this adsorbate
-                            for blocked_rotation_id in eachindex(elements_equal_1)
-
-                                # Is this point in the list of affected points
-                                if [dif_ads_molecule, grid_id, corrected_point, elements_equal_1[blocked_rotation_id]] in eachcol(Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation])
+                                if contains_column(dif_affected_points, dif_ads_molecule, grid_id, corrected_point, dif_rotation)
                                     rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
                                     continue
-                                elseif [dif_ads_molecule, grid_id, corrected_point, -1] in eachcol(Affected_Points_Rotations[dif_ads_molecule][dif_grid][dif_unique_point][dif_rotation])
-                                    rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = true
+                                else
+                                    rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
                                     continue
                                 end
 
+                            else
+                            
+                                # This rotation is blocked multiple times; a diffusion is not possible
+                                rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id][point_id] = false
+                                continue
+
                             end
 
-                        end                       
+                        end
 
-                    end
-                    =#
-
-                #end
+                end
 
             end
 
         end
 
-    end
 
-
-    # Update the reduced diffusion vector and the number of free diffusion targets
-    for diffusion_point in list_diffusion_points
-        dif_grid, dif_point = diffusion_point
-        dif_ads_molecule = rsa_gridpoints[dif_grid][dif_point].adsorbed_molecule
-        for grid_id in 1:Ngrids
-            rsa_gridpoints[dif_grid][dif_point].reduced_diffusion[dif_ads_molecule][grid_id] = findall(x->x==true, rsa_gridpoints[dif_grid][dif_point].bool_diffusion[dif_ads_molecule][grid_id])
-            rsa_gridpoints[dif_grid][dif_point].Ntarget_diffusion[dif_ads_molecule][grid_id] = length(rsa_gridpoints[dif_grid][dif_point].reduced_diffusion[dif_ads_molecule][grid_id])
+        # Update the reduced diffusion vector and the number of free diffusion targets
+        for diffusion_point in list_diffusion_points
+            dif_grid, dif_point = diffusion_point
+            point = rsa_gridpoints[dif_grid][dif_point]
+            dif_ads_molecule = point.adsorbed_molecule
+            reduced = point.reduced_diffusion[dif_ads_molecule]
+            bools = point.bool_diffusion[dif_ads_molecule]
+            counts = point.Ntarget_diffusion[dif_ads_molecule]
+            for grid_id in 1:Ngrids
+                counts[grid_id] = collect_true_indices!(reduced[grid_id], bools[grid_id])
+            end
         end
+
     end
 
 
@@ -471,19 +467,31 @@ function rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_gri
     #
     #println("Diffusion targets points list")
     #println(list_diffusion_points)
-    list_union = union(list_affected_points, list_diffusion_points) 
-    for element in list_union
-        rsa_gridpoints[element[1]][element[2]] = update_rate_constants_and_events(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info)
+    for element in list_affected_points
+        update_rate_constants_and_events!(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info, event_buffer)
+    end
+    for element in list_diffusion_points
+        if affected_stamp[element[1]][element[2]] != visit_stamp
+            update_rate_constants_and_events!(rsa_gridpoints, element[1], element[2], Nmolecules, Ngrids, rate_constants_info, event_buffer)
+        end
     end
 
 
 end
 
 # A function to update the rate constants and number of events for a given grid point
-function update_rate_constants_and_events(rsa_gridpoints, gridtype, gridpoint, Nmolecules, Ngrids, rate_constants_info)
+function update_rate_constants_and_events!(rsa_gridpoints, gridtype, gridpoint, Nmolecules, Ngrids, rate_constants_info, event_buffer)
 
     # Get the grid point to update
     point = rsa_gridpoints[gridtype][gridpoint]
+
+    # Counter values before the update, so the running totals can be adjusted by the
+    # difference instead of being re-summed over the whole grid every step
+    previous_nads = point.Nads
+    previous_ndif = point.Ndif
+    previous_nrot = point.Nrot
+    previous_ncon = point.Ncon
+    previous_nevents = point.Nevents
 
     # First check whether a molecule is adsorbed on this point
     if point.bool_occupied == true
@@ -550,7 +558,7 @@ function update_rate_constants_and_events(rsa_gridpoints, gridtype, gridpoint, N
 
         # Update cummulative rate constant
         for molecule_id in 1:Nmolecules
-            cum_sum = 0
+            cum_sum = 0.0
             for event_id in 1:4
                 cum_sum += point.Trate_event[molecule_id][event_id]
                 point.Cumulative_rate_events[molecule_id][event_id] = cum_sum
@@ -584,7 +592,7 @@ function update_rate_constants_and_events(rsa_gridpoints, gridtype, gridpoint, N
 
         # Update cummulative rate constant
         for molecule_id in 1:Nmolecules
-            cum_sum = 0
+            cum_sum = 0.0
             for event_id in 1:4
                 cum_sum += point.Trate_event[molecule_id][event_id]
                 point.Cumulative_rate_events[molecule_id][event_id] = cum_sum
@@ -604,14 +612,14 @@ function update_rate_constants_and_events(rsa_gridpoints, gridtype, gridpoint, N
     end
 
     # Update cummulative rate per molecule
-    cum_sum = 0
+    cum_sum = 0.0
     for molecule_id in 1:Nmolecules
         cum_sum += point.Trate_molec[molecule_id]
         point.Cumulative_rate_molecules[molecule_id] = cum_sum
     end
 
     # Update cummulate rate constants (adsorption only)
-    cum_sum = 0
+    cum_sum = 0.0
     for molecule_id in 1:Nmolecules
         cum_sum += point.Trate_event[molecule_id][1]
         point.Cumulative_rate_molecules_ads[molecule_id] = cum_sum
@@ -624,61 +632,46 @@ function update_rate_constants_and_events(rsa_gridpoints, gridtype, gridpoint, N
     # Update number of total events
     point.Nevents = point.Nads + point.Nrot + point.Ndif + point.Ncon 
 
-    # Return the updated gridpoint
-    return point
+    # Mirror the two rate constants into the dense arrays and fold the counter changes
+    # into the running totals. Integer arithmetic, so the totals stay exact.
+    event_buffer.trate[gridtype][gridpoint] = point.Trateconst
+    event_buffer.trate_ads[gridtype][gridpoint] = point.Trateconst_ads
+    event_buffer.total_nads += point.Nads - previous_nads
+    event_buffer.total_ndif += point.Ndif - previous_ndif
+    event_buffer.total_nrot += point.Nrot - previous_nrot
+    event_buffer.total_ncon += point.Ncon - previous_ncon
+    event_buffer.total_nevents += point.Nevents - previous_nevents
+
+    # Return nothing - gridpoints are updated in place
+    return nothing
 
 end
 
 # A function to calculate the rateconstant as sum over all gridpoints
 # In addition a vector storing the cumulative rate constants is generated
-function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption, event_buffer)
 
     # Default rate constants
     total_grid_rate_constant, cumulative_grid_rate_constants, cumulative_points_rate_constants = rate_constant_buffers
     total_rate_constant = 0.0
 
-    # Default events possible
-    total_events_possible = 0
-    ads_events_possible = 0
-    dif_events_possible = 0
-    rot_events_possible = 0
-    con_events_possible = 0
-
     # First loop over grids
     for grid_id in 1:Ngrids
 
-        # Get the submatrix of the gridpoints
-        subgrid_matrix = rsa_gridpoints[grid_id]
+        # The dense mirror of the per-point rate constant. Reading it instead of
+        # dereferencing every gridpoint_struct turns this pass into a contiguous scan;
+        # the summation order is unchanged (ascending point, then ascending grid), so the
+        # accumulated values are bit-identical to summing the struct fields directly.
+        point_rates = force_adsorption == true ? event_buffer.trate_ads[grid_id] : event_buffer.trate[grid_id]
 
         # Defaults
         rate_constant = 0.0
         cumulative_points_rates = cumulative_points_rate_constants[grid_id]
 
         # Second loop over gridpoints of this grid
-        for point_id in 1:grids[grid_id].Npoints
-
-            # Get the struct of the gridpoint
-            gridpoint = subgrid_matrix[point_id]
-
-            # Update rate constants
-            if force_adsorption == true
-                rate_constant += gridpoint.Trateconst_ads
-            else
-                rate_constant += gridpoint.Trateconst
-            end
+        @inbounds for point_id in 1:grids[grid_id].Npoints
+            rate_constant += point_rates[point_id]
             cumulative_points_rates[point_id] = rate_constant
-            
-            # Update events possible
-            if force_adsorption == true
-                total_events_possible += gridpoint.Nads
-            else
-                total_events_possible += gridpoint.Nevents
-            end
-            ads_events_possible += gridpoint.Nads
-            dif_events_possible += gridpoint.Ndif
-            rot_events_possible += gridpoint.Nrot
-            con_events_possible += gridpoint.Ncon
-
         end
 
         # Update grid rate constants
@@ -688,8 +681,12 @@ function calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ng
         
     end
 
+    # Events possible are maintained incrementally by update_rate_constants_and_events!
+    # and refreshed once per run, so no per-step pass over the grid is needed
+    total_events_possible = force_adsorption == true ? event_buffer.total_nads : event_buffer.total_nevents
+
     # Return result
-    return total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible
+    return total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, event_buffer.total_nads, event_buffer.total_nrot, event_buffer.total_ndif, event_buffer.total_ncon
 
 end
 
@@ -872,13 +869,13 @@ function select_rsa_event(total_rate_constant, cumulative_grid_rate_constants, t
 end
 
 # Invoke all routines for a single rsa step
-function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, timer)
+function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, event_buffer, timer)
 
     # Increase the step counter
     rsa_run_results.Nsteps += 1
 
     # Create total rate constants
-    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+    total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption, event_buffer)
     #=
     println("Total rate constant: "*string(total_rate_constant))
     println("Cummulative grid rate constant: "*string(cumulative_grid_rate_constants))
@@ -890,7 +887,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     if force_adsorption == true && total_events_possible == 0
         # As an adsorption event can not be forced the rate constants are recalculated without forced adsorption
         force_adsorption = false
-        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption)
+        total_rate_constant, cumulative_grid_rate_constants, total_grid_rate_constant, cumulative_points_rate_constants, total_events_possible, ads_events_possible, rot_events_possible, dif_events_possible, con_events_possible = @timeit timer "Rate constant calculation 2" calculate_total_rateconstant!(rate_constant_buffers, rsa_gridpoints, Ngrids, grids, force_adsorption, event_buffer)
     end
 
 
@@ -930,7 +927,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
     end
 
     # Update event list
-    @timeit timer "Event list update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info)
+    @timeit timer "Event list update" rsa_update_event_list!(rsa_gridpoints, selected_grid_type, selected_grid_point, selected_molecule, selected_event_type, selected_subevent, selected_event, selected_event_2, Nmolecules, molecules, Ngrids, grids, lattice, Affected_Points_Rotations, rate_constants_info, event_buffer)
 
     # Return additional information for IO etc
     #return 
@@ -938,7 +935,7 @@ function perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules,
 end
 
 # Invoke all routines for a complete rsa run
-function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer; seed::Matrix{Int64}=Matrix{Int64}(undef, 4, 0))
+function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, event_buffer, timer; seed::Matrix{Int64}=Matrix{Int64}(undef, 4, 0))
 
     # Initialization of event counter
     non_adsorption_events = 0
@@ -959,16 +956,20 @@ function perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, 
     # and the cummilative rate constant for ever grid points (cumulative_points_rate_constants)
     rate_constant_buffers = (zeros(Ngrids), zeros(Ngrids), [Vector{Float64}(undef, grids[grid_id].Npoints) for grid_id in 1:Ngrids])
  
+    # Rebuild the dense rate mirrors and running counter totals for this run. Covers
+    # both a freshly initialised grid and one restored by reset_gridpoints!.
+    refresh_rate_mirror!(event_buffer, rsa_gridpoints, Ngrids, grids)
+
     # Seed the calculation based on the current origin seed
     # This functions does nothing in case the seed is empty (therefore only used for restart runs)
-    seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, timer)
+    seed_grid!(rsa_gridpoints, seed, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, event_buffer, timer)
     rsa_run_results.seed_offset = size(seed, 2)
 
     # Perform rsa steps until no adsorption is possible any more
     while true
 
         # Perform RSA step
-        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, timer)
+        @timeit timer "Steps" perform_rsa_step!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, Affected_Points_Rotations, rate_constants_info, rsa_run_results, force_adsorption, rate_constant_buffers, event_buffer, timer)
 
         # Break conditions:
         # No further events possible
@@ -1027,6 +1028,7 @@ Performs `NRuns` RSA simulations controlled by the input file found under the gi
 
 # Optional input
 - `hdf5`: Flag to request the generation of a HDF5 file storing all information.
+- `memoize_delta`: Cache the release/block delta per state transition instead of recomputing it every step (default `true`). 
 
 # Return values
 Returns input information and results as structs in the follwing order:
@@ -1040,7 +1042,7 @@ Returns input information and results as structs in the follwing order:
 
 
 """
-function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutput,NoTimerOutput}=NoTimerOutput(), hdf5=false)
+function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutput,NoTimerOutput}=NoTimerOutput(), hdf5=false, memoize_delta::Bool=true)
 
     #
     # RSA initialization
@@ -1058,16 +1060,16 @@ function perform_multiple_rsa_runs(NRuns, inputfile_path; timer::Union{TimerOutp
     # Is this a restart run or the first run
     if events.restart_flag == true
         # Continue as restart run
-        return perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events)
+        return perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta)
     else
         # Continue as first run
-        return perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events)
+        return perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta)
     end
 
 end
 
 # The main function controlling multiple rsa runs starting from scratch
-function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events)
+function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta::Bool=true)
 
     # TimerOutputs
     @timeit timer "Initialization" begin
@@ -1098,6 +1100,9 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
     # Build the initial grid once and reuse it across all runs
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
+    # Allocate the event-list event buffers
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, rate_constants_info, memoize_delta)
+
     # TimerOutputs
     end
     
@@ -1117,7 +1122,7 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
         end
 
         # Perform the RSA run
-        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer)
+        rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, event_buffer, timer)
 
     end
 
@@ -1145,13 +1150,16 @@ function perform_multiple_rsa_runs_first(NRuns, inputfile_path, timer, hdf5, Nmo
 end
 
 # The main function controlling multiple rsa runs based on a restart calculation
-function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events)
+function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, Ngrids, grids, lattice, events, memoize_delta::Bool=true)
 
     # TimerOutputs
     @timeit timer "Initialization" begin
 
     # Read the hdf5 file
     origin_rsa_results, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice, origin_events = read_hdf5_output_file(events.restart_file, events.restart_generation)
+
+    # Resolve the requested origin runs
+    resolve_restart_runs!(events, origin_rsa_results)
 
     # Check the molecule, grid, and lattice information
     validate_restart_compatibility(Nmolecules, molecules, Ngrids, grids, lattice, origin_Nmolecules, origin_molecules, origin_Ngrids, origin_grids, origin_lattice)
@@ -1186,6 +1194,9 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
     # Build the initial grid once and reuse it across all runs
     rsa_gridpoints = @timeit timer "Grid initialization" grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate_constants_info, neighbour_list)
 
+    # Allocate the event-list event buffers
+    event_buffer = rsa_event_buffer_initialization(Ngrids, grids, Affected_Points_Rotations, rate_constants_info, memoize_delta)
+
     # TimerOutputs
     end
 
@@ -1217,7 +1228,7 @@ function perform_multiple_rsa_runs_restart(NRuns, timer, Nmolecules, molecules, 
             end
 
             # Perform the RSA run
-            rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, timer; seed = seed_status)
+            rsa_results[run_id] = @timeit timer "Runs" perform_rsa_run!(rsa_gridpoints, Ngrids, grids, Nmolecules, molecules, lattice, events, Affected_Points_Rotations, rate_constants_info, event_buffer, timer; seed = seed_status)
 
         end
     

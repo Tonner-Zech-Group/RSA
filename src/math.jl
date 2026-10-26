@@ -73,9 +73,9 @@ function get_smallest_vdW_distance_to_point(molecule_elements, molecule_coords, 
     # Get the distanes
     distance_vectors =  molecule_coords .- point
 
-    # Correct for periodic boundary conditions
+    # Correct based on minimum image convention
     if pbc == true
-        distance_vectors = apply_pbc_to_coordinates(distance_vectors, lattice.transcellvectors, lattice.inversecellvectors)
+        distance_vectors = apply_minimum_image_convention(distance_vectors, lattice.transcellvectors, lattice.inversecellvectors)
     end
 
     # Calculate the distances
@@ -150,7 +150,7 @@ function point_covered_by_vdW_radii_2D(molecule_elements, molecule_coords, point
     for ele in axes(molecule_coords, 2)
         
         distance_vector = molecule_coords[:,ele] - point
-        distance_vector = apply_pbc_to_coordinates(distance_vector, lattice.transcellvectors, lattice.inversecellvectors)
+        distance_vector = apply_minimum_image_convention(distance_vector, lattice.transcellvectors, lattice.inversecellvectors)
         distance = norm(distance_vector[1:dim])
 
         if distance < atomic_information[molecule_elements[ele], 3]
@@ -233,40 +233,96 @@ function calculate_rotation_matrix(rotation_angle, dimension)
 
 end
 
+# A function to write the indices of all true entries of `flags` into `indices`, returning how many there are.
+function collect_true_indices!(indices::Vector{Int64}, flags::AbstractVector{Bool})
+    resize!(indices, length(flags))
+    count = 0
+    for index in eachindex(flags)
+        if flags[index]
+            count += 1
+            indices[count] = index
+        end
+    end
+    resize!(indices, count)
+    return count
+end
+
 # A function to calculate a release and block matrix based on entries only available in the first or second matrix, respectively.
-function delta_matrix(matrix_A, matrix_B)
+#
+# `release` receives the columns of `matrix_A` absent from `matrix_B`, `block` the columns of
+# `matrix_B` absent from `matrix_A`, both in ascending column order with duplicates kept.
+# Both are preallocated buffers; returns the two column counts.
+# Columns are keyed as NTuple{4,Int64} (isbits, hashed without allocating) into two reusable
+# sets that are only emptied, which keeps their capacity.
+function delta_matrix!(release, block, keys_A, keys_B, matrix_A, matrix_B)
 
-    # Create a set for each matrix
-    Bcols = Set(eachcol(matrix_B))
-    Acols = Set(eachcol(matrix_A))
-    
-    # Get the release and block matrix
-    release_matrix = matrix_A[:, @views [i for i in axes(matrix_A,2) if matrix_A[:,i] ∉ Bcols]]
-    block_matrix   = matrix_B[:, @views [i for i in axes(matrix_B,2) if matrix_B[:,i] ∉ Acols]]
+    empty!(keys_A)
+    empty!(keys_B)
+    for column_id in axes(matrix_A, 2)
+        push!(keys_A, (matrix_A[1,column_id], matrix_A[2,column_id], matrix_A[3,column_id], matrix_A[4,column_id]))
+    end
+    for column_id in axes(matrix_B, 2)
+        push!(keys_B, (matrix_B[1,column_id], matrix_B[2,column_id], matrix_B[3,column_id], matrix_B[4,column_id]))
+    end
 
-    # Return the results
-    return release_matrix, block_matrix
+    Nrelease = 0
+    for column_id in axes(matrix_A, 2)
+        if (matrix_A[1,column_id], matrix_A[2,column_id], matrix_A[3,column_id], matrix_A[4,column_id]) ∉ keys_B
+            Nrelease += 1
+            for row_id in 1:4
+                release[row_id, Nrelease] = matrix_A[row_id, column_id]
+            end
+        end
+    end
+
+    Nblock = 0
+    for column_id in axes(matrix_B, 2)
+        if (matrix_B[1,column_id], matrix_B[2,column_id], matrix_B[3,column_id], matrix_B[4,column_id]) ∉ keys_A
+            Nblock += 1
+            for row_id in 1:4
+                block[row_id, Nblock] = matrix_B[row_id, column_id]
+            end
+        end
+    end
+
+    return Nrelease, Nblock
+
+end
+
+# Function to translate the grid-point row of an affected-points matrix.
+#
+# `source` holds affected points relative to a reference cell; each column is
+# (molecule, grid, point, rotation) and only the point in row 3 has to be shifted by
+# the reference translation. Writes into the first `size(source, 2)` columns of
+# `destination` and returns that count. `destination` and `source` may be the same
+# matrix.
+function translate_affected_columns!(destination, source, grids, lattice, reference_transx, reference_transy)
+
+    Npoints = size(source, 2)
+
+    for point_id in 1:Npoints
+        affected_grid_id = source[2, point_id]
+        affected_grid = grids[affected_grid_id]
+        mapping = affected_grid.mapping
+        source_point = source[3, point_id]
+        new_transx = mapping[2, source_point] + reference_transx
+        new_transy = mapping[3, source_point] + reference_transy
+
+        destination[1, point_id] = source[1, point_id]
+        destination[2, point_id] = affected_grid_id
+        destination[3, point_id] = map_translation_to_gridpoint(mapping[1, source_point], affected_grid.Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
+        destination[4, point_id] = source[4, point_id]
+    end
+
+    return Npoints
 
 end
 
 # Function to map a complete list of affected unique points to the actual points
-function map_affected_grid_points_to_actual_points(Affected_Points_Rotations, molecule_id, grid_id, unique_point_id, rotation_id, grids, lattice, reference_transx, reference_transy)
-
-    # Generate a copy of the unique affected points
-    mapped_points = deepcopy(Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id])
-
-    # Map all unique values to the actual values
-    for point_id in axes(mapped_points,2)
-        mapping_unique_point, mapping_transx, mapping_transy = grids[mapped_points[2,point_id]].mapping[1:3, mapped_points[3,point_id]]
-        new_transx = mapping_transx + reference_transx
-        new_transy = mapping_transy + reference_transy
-        affected_point = map_translation_to_gridpoint(mapping_unique_point, grids[mapped_points[2,point_id]].Nuniquepoints, new_transx, lattice.Ncellx, new_transy, lattice.Ncelly)
-        mapped_points[3,point_id] = affected_point
-    end
-
-    # Return the results
-    return mapped_points
-
+# Writes into the preallocated `destination` and returns the column count.
+function map_affected_grid_points_to_actual_points!(destination, Affected_Points_Rotations, molecule_id, grid_id, unique_point_id, rotation_id, grids, lattice, reference_transx, reference_transy)
+    source = Affected_Points_Rotations[molecule_id][grid_id][unique_point_id][rotation_id]
+    return translate_affected_columns!(destination, source, grids, lattice, reference_transx, reference_transy)
 end
 
 # A function to find the first column in a matrix 
@@ -307,6 +363,18 @@ end
 function present_column(matrix::Matrix{Int64}, column::Vector{Int64}, subset::UnitRange{Int64})
     for column_id in axes(matrix,2)
         if column == @view matrix[subset,column_id]
+            return true
+        end
+    end
+    return false
+end
+
+# A function to test whether a four-row matrix contains a given column.
+# Allocation-free version of the present_column function for a four-row matrix.
+@inline function contains_column(matrix, value_1, value_2, value_3, value_4)
+    for column_id in axes(matrix, 2)
+        if matrix[1, column_id] == value_1 && matrix[2, column_id] == value_2 &&
+           matrix[3, column_id] == value_3 && matrix[4, column_id] == value_4
             return true
         end
     end

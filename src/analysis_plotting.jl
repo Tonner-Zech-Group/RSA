@@ -399,7 +399,7 @@ function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, file_p
 end
 
 # A function to plot a histogram based on a given vector of numbers
-function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = 0.0, normalized = false)
+function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsize = 1.0, resolution = 600, distribution = "none", plotonly = true, threshold = Vector{Float64}(undef, 0), normalized = false)
 
     # Derive all metrics of the data set
     if distribution == "truncated"
@@ -413,8 +413,16 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
         avgvalue, avgvalue_id = 0.0, 0
     end
 
-    # Define the bins of the histrogram
-    bins = range(minvalue, maxvalue, step = stepsize)
+    # Define the bins of the histrogram and the limits of the x axis
+    if abs(maxvalue - minvalue) < stepsize
+        bins = range(minvalue - stepsize / 2, maxvalue + stepsize / 2, length = 2)
+        lowerlimit = minvalue - 3 * stepsize / 2
+        upperlimit = maxvalue + 3 * stepsize / 2
+    else
+        bins = range(minvalue, maxvalue, step = stepsize)
+        lowerlimit = minvalue
+        upperlimit = maxvalue
+    end
 
     # Scale the gaussian distribution (to the area of the visible bins)
     if normalized == true
@@ -426,22 +434,22 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
     end
 
     # Plot the histogram
-    histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = plots_normalization, xlims=(minvalue, maxvalue), legend=false, bins = bins, dpi = resolution)
+    histo = histogram(data_vector, xlabel = labelx, ylabel = labely, normalize = plots_normalization, xlims=(lowerlimit, upperlimit), legend=false, bins = bins, dpi = resolution)
 
     # Add the normal distribution
-    if distribution == "gaussian"
-        x = range(minvalue, maxvalue, step = stepsize/10)
+    if distribution == "gaussian" && standarddeviation > 1.0e-10
+        x = range(lowerlimit, upperlimit, step = stepsize/10)
         y = @. gaussian_scaling * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
-    elseif distribution == "truncated"
-        x = range(minvalue, maxvalue, step = stepsize/10)
+    elseif distribution == "truncated" && standarddeviation > 1.0e-10
+        x = range(lowerlimit, upperlimit, step = stepsize/10)
         y = @. gaussian_scaling * 2 * 1/(standarddeviation * sqrt(2*π)) * exp(-0.5 * (x - mean)^2 / standarddeviation^2) 
         plot!(x,y, width = 4, lc = "red")
     end
 
     # Add a vertical line if requested
-    if threshold > 0.0
-        vline!([threshold], linestyle = :dash, linecolor = :red, linewidth = resolution/200)
+    for ele in threshold
+        vline!([ele], linestyle = :dash, linecolor = :red, linewidth = resolution/200)
     end
 
     # Return all results
@@ -547,94 +555,6 @@ function plot_count_area_histograms(Nruns, rsa_results, Nmolecules, molecules, l
 
 end
 
-# A function generating shell lists for every unique grid point
-# The tolerance is multiplied with the largest molecule radius to define the shell size
-function create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice; tolerance = 1.05)
-
-    # Create the vector of vectors to store the shells
-    # Grid --> Unique point --> Grid --> Shells --> Points
-    neighbour_shell_list = Vector{Vector{Vector{Vector{Vector{Int64}}}}}(undef, Ngrids)
-    for grid_A_id in 1:Ngrids
-        neighbour_shell_list[grid_A_id] = Vector{Vector{Vector{Vector{Int64}}}}(undef, grids[grid_A_id].Nuniquepoints)
-        for unique_id in 1:grids[grid_A_id].Nuniquepoints
-            neighbour_shell_list[grid_A_id][unique_id] = Vector{Vector{Vector{Int64}}}(undef, Ngrids)
-        end
-    end
-
-    # Get the largest radius of any molecule
-    radius = 0.0
-    for molecule_id in 1:Nmolecules
-        if molecules[molecule_id].maxradius > radius
-            radius = molecules[molecule_id].maxradius
-        end
-    end
-
-    # Add the tolerance to this radius
-    radius *= tolerance
-
-    # Loop over all grids
-    for grid_A_id in 1:Ngrids
-
-        # Loop over all unique points
-        for unique_id in 1:grids[grid_A_id].Nuniquepoints
-
-            # Get the current unique point
-            upoint = @view grids[grid_A_id].uniquepoints[:, unique_id]
-
-            # Loop over all grids
-            for grid_B_id in 1:Ngrids
-
-                # Calculate the distance vectors between the unique point and all points of this grid
-                distance_vectors =  grids[grid_B_id].points .- upoint
-
-                # Correct for PBC
-                corrected_distance_vectors = apply_pbc_to_coordinates(distance_vectors, lattice.transcellvectors, lattice.inversecellvectors)
-
-                # Get the distances
-                distances = vec(sqrt.(sum(abs2, corrected_distance_vectors, dims = 1)))
-
-                # Sort the distances for increasing distances
-                sorted_index = sortperm(distances)
-
-                # Create the sorted distances
-                sorted_distances = distances[sorted_index]
-
-                # Define empty vector to store shells
-                shells_vector = Vector{Vector{Int64}}(undef, 0)
-
-                # Loop over the sorted distances and add them to shells based on the distance
-                # In case both grids are identical: Skip the first entry as this is always the point itself (with a distance of zero)
-                if grid_A_id == grid_B_id
-                    start_id = 2
-                else
-                    start_id = 1
-                end
-                shell = 1
-                for distance_id in 2:grids[grid_B_id].Npoints
-                    if sorted_distances[distance_id] > shell * radius
-                        push!(shells_vector, sorted_index[start_id:distance_id-1])
-                        start_id = distance_id
-                        shell += 1
-                    end
-                end
-                
-                # Add the last block to the shell vector
-                push!(shells_vector, sorted_index[start_id:grids[grid_B_id].Npoints])
-
-                # Add the shell vector to the final vector
-                neighbour_shell_list[grid_A_id][unique_id][grid_B_id] = shells_vector
-
-            end
-
-        end
-
-    end
-
-    # Return the result
-    return neighbour_shell_list
-
-end
-
 # A function to plot the effective gap size
 """
 
@@ -658,12 +578,13 @@ Create an image of the effective gap sizes as well as the histogram showing the 
 - `plotonly`: Flag to request additional metrics.
 - `normalized`: Flag to normalize the histogram with Plots internals.
 - `withmargins`: Flag to add a default white space around the simulation cell. By default no white space is added.
+- `threshold`: Flag to add threshold values to be marked in the histogram. Values specified in a vector.
 
 # Return values
 - `plotonly = true (default)`: Returns the histogram showing the frequency of all gap sizes and a plots object for the visualization of the gaps in the following order: histogram, plot.
 - `plotonly = false`: In addition to the default case, a vector containing the obtained effective gap sizes as well as a vector of the corresponding free grid point are returned. Information are returned in the following order: histogram, plot, gap sizes, free grid points.
 """
-function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = 0.0, normalized = false, withmargins = false)
+function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = Vector{Float64}(undef, 0), normalized = false, withmargins = false)
 
     # Get the shells of every grid point
     neighbour_shell_list = create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice)

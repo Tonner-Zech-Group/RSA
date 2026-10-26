@@ -96,8 +96,21 @@ function replicate_gridpoints_with_translation(lattice, gridpoints, transx, tran
 
 end
 
-# Function to move a point to the unit cell or reduce a distance by applying pbc
-function apply_pbc_to_coordinates(coordinates, fulllattice, invfulllattice)
+"""
+
+    apply_pbc_to_coordinates(coordinates, fulllattice, invfulllattice)
+
+Function to move a list of points (given as vector or matrix) to the unit cell by applying pbc.
+Importantly: The ranged used here is [-0.5, 0.5] for the fractional coordinates. Do not use this function for displacement.
+Should only be used for a distance in case the unit cell is orthogonal. Better use [`apply_minimum_image_convention`](@ref) instead.
+
+# Input
+- `coordinates` in cartesian coordinates
+
+# Return values
+Returns same structure as in `coordinates` in cartesian coordinates.
+"""
+function apply_pbc_to_coordinates!(coordinates, fulllattice, invfulllattice)
 
     # Convert to fractional coordinates
     fractional_coordinates = invfulllattice * coordinates
@@ -120,10 +133,21 @@ function apply_pbc_to_coordinates(coordinates, fulllattice, invfulllattice)
 
 end
 
-# Function to move a point to the unit cell or reduce a distance by applying pbc
-# The initial point is already provided in fractional coordinates
-# Returns cartesian coordinates
-function apply_pbc_to_fractional_coordinates(coordinates, fulllattice)
+"""
+
+    apply_pbc_to_fractional_coordinates(coordinates, fulllattice)
+
+Function to move a list of points (given as vector or matrix) to the unit cell by applying pbc.
+Importantly: The ranged used here is [-0.5, 0.5] for the fractional coordinates. Do not use this function for displacement.
+Should only be used for a distance in case the unit cell is orthogonal. Better use [`apply_minimum_image_convention`](@ref) instead.
+
+# Input
+- `coordinates` in fractional coordinates
+
+# Return values
+Returns same structure as in `coordinates` in cartesian coordinates.
+"""
+function apply_pbc_to_fractional_coordinates!(coordinates, fulllattice)
 
     # Apply pbc
     for element in eachindex(coordinates)
@@ -140,6 +164,124 @@ function apply_pbc_to_fractional_coordinates(coordinates, fulllattice)
 
     # Return
     return cartesian_coordinates
+
+end
+
+"""
+
+    closest_image_within_plane(vector, fulllattice)
+
+Function to find the closest periodic image of a vector which is already wrapped into the unit cell.
+
+# Input
+- `vector` in cartesian coordinates
+
+# Return values
+Returns the shortest vector in cartesian coordinates.
+"""
+function closest_image_within_plane(vector, fulllattice)
+
+    # For an orthogonal lattice the wrapped vector is always the closest periodic image
+    # Uncomment in case the usage of minimum image convention is getting too slow otherwise run always the exact test
+    #if abs(dot(fulllattice[:,1], fulllattice[:,2])) < 1e-10
+    #    return vector
+    #end
+
+    # Check the neighbouring images within the surface plane
+    closest_vector = vector
+    closest_distance = norm(vector)
+    for shift_x in -1:1
+        for shift_y in -1:1
+            candidate_vector = vector + shift_x * fulllattice[:,1] + shift_y * fulllattice[:,2]
+            candidate_distance = norm(candidate_vector)
+            if candidate_distance < closest_distance
+                closest_vector = candidate_vector
+                closest_distance = candidate_distance
+            end
+        end
+    end
+
+    # Return
+    return closest_vector
+
+end
+
+"""
+
+    minimum_image_vector(vector, fulllattice, invfulllattice)
+
+Function to reduce a single distance vector to its closest periodic image.
+The ranged used here is [-0.5, 0.5] for the fractional coordinates.
+
+# Input
+- `vector` in cartesian coordinates
+
+# Return values
+Returns the shortest vector in cartesian coordinates.
+"""
+function minimum_image_vector(vector, fulllattice, invfulllattice)
+
+    # Wrap the vector into the unit cell
+    fractional_vector = invfulllattice * vector
+    fractional_vector .-= round.(fractional_vector)
+
+    # Return the closest periodic image
+    return closest_image_within_plane(fulllattice * fractional_vector, fulllattice)
+
+end
+
+"""
+
+    minimum_image_vector(vector, fulllattice, invfulllattice)
+
+Function to reduce a single distance vector to its closest periodic image.
+The ranged used here is [-0.5, 0.5] for the fractional coordinates.
+
+# Input
+- `vector` in fractional coordinates
+
+# Return values
+Returns the shortest vector in cartesian coordinates.
+"""
+function minimum_image_from_fractional_coordinates(coordinates, fulllattice)
+
+    # Wrap the fractional coordinates into the unit cell
+    fractional_vector = coordinates .- round.(coordinates)
+
+    # Return the closest periodic image
+    return closest_image_within_plane(fulllattice * fractional_vector, fulllattice)
+
+end
+
+"""
+
+    apply_minimum_image_convention(coordinates, fulllattice, invfulllattice)
+
+Function to reduce distance vectors to their closest periodic images.
+Accepts a single distance vector or a matrix storing one distance vector per column. 
+Importantly: The ranged used here is [-0.5, 0.5] for the fractional coordinates. Do not use this function for displacement.
+
+# Input
+- `coordinates` in cartesian coordinates
+
+# Return values
+Returns same structure as in `coordinates` in cartesian coordinates.
+"""
+function apply_minimum_image_convention(coordinates, fulllattice, invfulllattice)
+
+    # Reduce a single distance vector
+    if ndims(coordinates) == 1
+        return minimum_image_vector(coordinates, fulllattice, invfulllattice)
+    end
+
+    # Reduce every column of a matrix
+    reduced_coordinates = Matrix{Float64}(undef, size(coordinates, 1), size(coordinates, 2))
+    for column_id in axes(coordinates, 2)
+        reduced_coordinates[:, column_id] = minimum_image_vector(coordinates[:, column_id], fulllattice, invfulllattice)
+    end
+
+    # Return
+    return reduced_coordinates
 
 end
 
