@@ -211,6 +211,9 @@ function read_hdf5_lattice(group_id)
     lattice.transcellvectors = read(lattice_id, "transvectors")
     lattice.inversecellvectors = read(lattice_id, "inversevectors")
 
+    # The reduced basis is not stored but regenerated
+    lattice.reducedcellvectors, lattice.inversereducedcellvectors, lattice.reductionmatrix = reduce_lattice_basis(lattice.transcellvectors, lattice.inversecellvectors)
+
     # Return results
     return lattice
     

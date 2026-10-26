@@ -655,7 +655,7 @@ function check_for_atom_overlap(points_difference_vector, points_difference, mol
             # Calculate the difference between the atoms (vector in fractional coordinates)
             # Use minimum image convention to get the shortest distance
             fractional_distance_vector = points_difference_vector + rotation_difference_matrix[atom_1_id,atom_2_id]
-            cartesian_distance_vector = minimum_image_from_fractional_coordinates(fractional_distance_vector, lattice.transcellvectors)
+            cartesian_distance_vector = minimum_image_from_fractional_coordinates(fractional_distance_vector, lattice.reducedcellvectors, lattice.reductionmatrix)
             # Only consider the distance in plane for RSA
             if overlap_2d
                 atoms_distance = norm(cartesian_distance_vector[1:2])
@@ -1006,7 +1006,7 @@ function generate_event_list_per_unique_gridpoint(Nmolecules, molecules, Ngrids,
                                 mapping = grids[Tgrid_id].mapping[:,Tpoint_id]
                                 fractional_points_difference_vector = unit_cell_gridpoints_difference[grid_id,Tgrid_id][point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                                cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
+                                cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.reducedcellvectors, lattice.reductionmatrix)
 
                                 if overlap_2d
                                     points_difference = norm(cartesian_points_difference_vector[1:2])
@@ -1161,7 +1161,7 @@ function create_neighbour_list(Nmolecules, Ngrids, rate_constants_info, lattice,
                         mapping = grids[end_grid_id].mapping[:,end_point_id]
                         fractional_points_difference_vector = unit_cell_gridpoints_difference[start_grid_id,end_grid_id][start_point_id, mapping[1]] + 
                                                                 translation_distance_vectors[mapping[2]+1, mapping[3]+1]
-                        cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.transcellvectors)
+                        cartesian_points_difference_vector = minimum_image_from_fractional_coordinates(fractional_points_difference_vector, lattice.reducedcellvectors, lattice.reductionmatrix)
 
                         if overlap_2d
                             distance = norm(cartesian_points_difference_vector[1:2])

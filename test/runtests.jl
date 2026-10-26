@@ -8,7 +8,7 @@ using Random
 using RSA
 
 # Vector storing all possible test suits
-all_tests = ["rsa", "io"]
+all_tests = ["rsa", "io", "pbc"]
 
 # Check whether to run all tests or only a subset (passed as command line arguments)
 if isempty(ARGS)
