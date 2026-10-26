@@ -145,6 +145,11 @@ Mutable struct to store all information concerning the lattice.
     Ncelly::Int64 = 1
     transcellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
     inversecellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
+
+    # Reduced basis of the full lattice (only used for the minimum image convention)
+    reducedcellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
+    inversereducedcellvectors::Matrix{Float64} = Matrix{Float64}(undef, 0, 0)
+    reductionmatrix::Matrix{Int64} = Matrix{Int64}(undef, 0, 0) # Fractional coordinates of the full lattice -> reduced basis
 end
 @kwdef mutable struct event_diffusion_struct
     molecule::Int64 = 1
@@ -897,6 +902,9 @@ function read_lattice_block(io_id, lattice_blockkeywords, lattice_keywords)
             if endcounter == 0
                 # Generate the full lattice based on the translations
                 lattice.transcellvectors, lattice.inversecellvectors = replicate_lattice_with_translation(lattice.cellvectors, lattice.transx, lattice.transy)
+
+                # Generate the reduced basis for the minimum image convention
+                lattice.reducedcellvectors, lattice.inversereducedcellvectors, lattice.reductionmatrix = reduce_lattice_basis(lattice.transcellvectors, lattice.inversecellvectors)
 
                 # Leave the while loop
                 break
