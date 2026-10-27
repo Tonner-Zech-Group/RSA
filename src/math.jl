@@ -346,18 +346,6 @@ function findfirst_subset(matrix::Matrix{Int64}, column::Vector{Int64}, subset::
     return 0
 end
 
-# A function to find the last column in a matrix 
-# subset gives the elements to be considered in every column
-# Keep for debugging purposes, but not used in the current version of the code
-function findlast_subset(matrix::Matrix{Int64}, column::Vector{Int64}, subset::UnitRange{Int64})
-    for column_id in reverse(axes(matrix,2))
-        if column == @view matrix[subset,column_id]
-            return column_id
-        end
-    end
-    return 0
-end
-
 # A function to check whether a subset is present in a matrix
 # subset gives the elements to be considered in every column
 function present_column(matrix::Matrix{Int64}, column::Vector{Int64}, subset::UnitRange{Int64})

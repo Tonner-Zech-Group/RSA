@@ -552,49 +552,6 @@ function grid_initialization(Ngrids, grids, Nmolecules, molecules, lattice, rate
 
 end
 
-# Keep for debugging purposes, but not used in the current version of the code
-# Function to calculate the overlap of two molecules in 2D
-function check_for_overlap(molecule_coords_A, molecule_coords_B, molecule_elements_A, molecule_elements_B, fulllattice, invfulllattice)
-
-    # Default
-    overlap = false
-
-    # Check
-    for a in axes(molecule_coords_A,2)
-        for b in axes(molecule_coords_B,2)
-            
-            # VdW sum
-            sum_vdw = (atomic_information[molecule_elements_A[a], 3] + atomic_information[molecule_elements_B[b], 3])
-            #println("VdW Radius: " * string(sum_vdw))
-
-            # Calculate distance (Difference --> convert to fractional --> check pbc --> convert back --> distance)
-            difference = molecule_coords_A[:,a] - molecule_coords_B[:,b]
-            
-            # Apply minimum image convention
-            difference = apply_minimum_image_convention(difference, fulllattice, invfulllattice)
-
-            # Calculate distance
-            distance = norm(difference[1:2])
-            #println("Distance: " * string(distance))
-            
-            if distance < sum_vdw
-                overlap = true
-                break
-            end
-
-        end
-
-        if overlap == true
-            break
-        end
-
-    end
-
-    # Return
-    return overlap
-
-end
-
 # Current version
 # Function to check whether atoms within two structures are overlapping
 # This function is using distance and difference matrices for unitcell gridpoints, translation vectors and rotations
@@ -680,40 +637,6 @@ function check_for_atom_overlap(points_difference_vector, points_difference, mol
 
     # Return result
     return overlap
-
-end
-
-# CURRENTLY: Not used
-# A function to calculate every sum of two atom radii
-# Aiming at reducing the computation of the effected gridpoints for the eventlist
-function calculate_length_sums(Nmolecules, molecules)
-    
-    # Create the matrix to store all elements
-    length_sums = Matrix{Matrix{Float64}}(undef, Nmolecules, Nmolecules)
-
-    for molecule_A_id in 1:Nmolecules
-        for molecule_B_id in 1:Nmolecules
-
-            # Generate tmp matrix
-            tmp_length_sums = Matrix{Float64}(undef, molecules[molecule_A_id].Natoms, molecules[molecule_B_id].Natoms)
-
-            # Calculate these values
-            for atom_A_id in 1:molecules[molecule_A_id].Natoms
-                for atom_B_id in 1:molecules[molecule_B_id].Natoms
-                    length_1 = molecules[molecule_A_id].radii_sorted[atom_A_id]
-                    length_2 = molecules[molecule_B_id].radii_sorted[atom_B_id]
-                    tmp_length_sums[atom_A_id,atom_B_id] = length_1 + length_2
-                end
-            end
-
-            # Store in the final matrix
-            length_sums[molecule_A_id,molecule_B_id] = tmp_length_sums
-
-        end
-    end
-
-    # Return the results
-    return length_sums
 
 end
 
@@ -1218,9 +1141,6 @@ function rsa_initialization(Nmolecules, molecules, Ngrids, grids, lattice, event
 
     # Calculate the difference vectors between atoms for every possible combination of rotating two structures
     rotation_difference_matrices = calculate_rotation_difference_matrices(Nmolecules, molecules, lattice)
-
-    # Calculate the sum of atomic radii --> currently not used as it is not speeding up the simulation
-    #length_sums = calculate_length_sums(Nmolecules, molecules)
 
     # Generate a list for every gridpoint of the unitcell & rotation of the molecule
     # This list contains every affected gridpoint & rotation to update all affected gridpoints as the consequence of a kMC event
