@@ -62,14 +62,23 @@ function displaced_molecule_status(status, status_element, molecules, grids, lat
 
 end
 
+# A function to define the plot window of the simulation cell
+# The window is the smallest box containing all four corners of the full lattice, so cells with
+# negative vector components (e.g. hexagonal cells with an angle of 120°) are shown completely
+function simulation_cell_limits(lattice)
+    cell = lattice.transcellvectors
+    x_limits = extrema((0.0, cell[1,1], cell[1,2], cell[1,1] + cell[1,2]))
+    y_limits = extrema((0.0, cell[2,1], cell[2,2], cell[2,1] + cell[2,2]))
+    return x_limits, y_limits
+end
+
 # A function to plot the points of all grids
 function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, silent = true, withmargins = false)
     
     # Define the image resolution
-    x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
-    y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
-    x_axis_resolution = x_axis_size * pixel_per_angstrom
-    y_axis_resolution = y_axis_size * pixel_per_angstrom
+    x_limits, y_limits = simulation_cell_limits(lattice)
+    x_axis_resolution = (x_limits[2] - x_limits[1]) * pixel_per_angstrom
+    y_axis_resolution = (y_limits[2] - y_limits[1]) * pixel_per_angstrom
     
     if silent != true
         println("Resolution: " * string(x_axis_resolution) * " x " * string(y_axis_resolution))
@@ -85,9 +94,9 @@ function plot_grid_points(Ngrids, grids, lattice; pixel_per_angstrom = 10.0, sil
     final_plot = 0
     for grid_id in 1:Ngrids
         if grid_id == 1
-            final_plot = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id], widen = false, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
+            final_plot = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=x_limits, ylims=y_limits, color = grid_palette[grid_id], widen = false, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         else
-            scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id])
+            scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, xlims=x_limits, ylims=y_limits, color = grid_palette[grid_id])
         end
     end
 
@@ -126,8 +135,7 @@ Create an image of the surface covered by adsorbates.
 function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, boundary_cells = 1, silent=true, gridplot = nothing, withmargins = false)
 
     # Define the axes size
-    x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
-    y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
+    x_limits, y_limits = simulation_cell_limits(lattice)
     
     # A prepared plot of the grid points can be handed over to skip the generation of an identical background
     if gridplot === nothing
@@ -184,7 +192,7 @@ function plot_RSA_run(status, Ngrids, grids, Nmolecules, molecules, lattice; pix
         if isempty(x_coordinates[molecule_id])
             continue
         end
-        scatter!(final_plot, x_coordinates[molecule_id], y_coordinates[molecule_id], markersize = markersizes[molecule_id], markerstrokewidth = 0, xlims = (0, x_axis_size), ylims = (0, y_axis_size), widen = false, color = molecule_palette[molecule_id])
+        scatter!(final_plot, x_coordinates[molecule_id], y_coordinates[molecule_id], markersize = markersizes[molecule_id], markerstrokewidth = 0, xlims = x_limits, ylims = y_limits, widen = false, color = molecule_palette[molecule_id])
     end
 
     # Return final plot
@@ -419,9 +427,12 @@ function plot_histogram(data_vector; labelx = "Value", labely = "Count", stepsiz
         lowerlimit = minvalue - 3 * stepsize / 2
         upperlimit = maxvalue + 3 * stepsize / 2
     else
-        bins = range(minvalue, maxvalue, step = stepsize)
-        lowerlimit = minvalue
-        upperlimit = maxvalue
+        # Bins are centred on the values and the last bin ends above the maximum value, so every value is counted
+        # (the histogram bins are closed on the left; a last edge at the maximum value would drop all maximum values)
+        Nbins = ceil(Int64, (maxvalue - minvalue) / stepsize) + 1
+        bins = range(minvalue - stepsize / 2, step = stepsize, length = Nbins + 1)
+        lowerlimit = first(bins)
+        upperlimit = last(bins)
     end
 
     # Scale the gaussian distribution (to the area of the visible bins)
@@ -586,6 +597,12 @@ Create an image of the effective gap sizes as well as the histogram showing the 
 """
 function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, lattice; pixel_per_angstrom = 10.0, gapsonly = false, withstroke = true, plotonly = true, stepsize = 0.2, threshold = Vector{Float64}(undef, 0), normalized = false, withmargins = false)
 
+    # Gaps are only defined relative to adsorbates
+    if size(status, 2) == 0
+        println("The effective gap size can not be calculated for a configuration without any adsorbate.")
+        error("Analysis Status Error")
+    end
+
     # Get the shells of every grid point
     neighbour_shell_list = create_neighbour_shell_lists(Ngrids, grids, Nmolecules, molecules, lattice)
 
@@ -622,10 +639,9 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
         end
     else
         # Define the image resolution
-        x_axis_size = lattice.transcellvectors[1,1] + lattice.transcellvectors[1,2]
-        y_axis_size = lattice.transcellvectors[2,1] + lattice.transcellvectors[2,2]
-        x_axis_resolution = x_axis_size * pixel_per_angstrom
-        y_axis_resolution = y_axis_size * pixel_per_angstrom
+        x_limits, y_limits = simulation_cell_limits(lattice)
+        x_axis_resolution = (x_limits[2] - x_limits[1]) * pixel_per_angstrom
+        y_axis_resolution = (y_limits[2] - y_limits[1]) * pixel_per_angstrom
     
         # Define color of grid points
         grid_palette = palette(:darktest, Ngrids)
@@ -636,7 +652,7 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
         # Plot the grids
         #for grid_id in 1:Ngrids
         #    if grid_id == 1
-        #        plot_gaps = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), color = grid_palette[grid_id], widen = false)
+        #        plot_gaps = scatter(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=x_limits, ylims=y_limits, color = grid_palette[grid_id], widen = false)
         #    else
         #        scatter!(grids[grid_id].points[1,:],grids[grid_id].points[2,:], markersize=pixel_per_angstrom/10, color = grid_palette[grid_id])
         #    end
@@ -644,9 +660,9 @@ function plot_effective_gap_size(status, Ngrids, grids, Nmolecules, molecules, l
 
         # Add the gaps
         if withstroke == true
-            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 10 / pixel_per_angstrom, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
+            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 10 / pixel_per_angstrom, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=x_limits, ylims=y_limits, widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         else
-            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 0, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=(0, x_axis_size), ylims=(0, y_axis_size), widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
+            plot_gaps = scatter(coordinates[1,:],coordinates[2,:], markersize = effective_gap_sizes * pixel_per_angstrom, markerstrokewidth = 0, legend=false, showaxis=false, grid=false, size=(x_axis_resolution, y_axis_resolution), xlims=x_limits, ylims=y_limits, widen = false, color = :grey, margin = plot_margin, framestyle = plot_framestyle, ticks = plot_ticks)
         end
 
     end
@@ -861,6 +877,12 @@ end
 
 # A function to calculate the effective gap size for a given RSA simulation
 function calculate_effective_gap_size(status, neighbour_shell_list, Ngrids, grids, molecules, lattice; dim = 2)
+
+    # Gaps are only defined relative to adsorbates
+    if size(status, 2) == 0
+        println("The effective gap size can not be calculated for a configuration without any adsorbate.")
+        error("Analysis Status Error")
+    end
     
     # Create empty arrays to store results
     effective_gap_sizes = Vector{Float64}(undef, 0)
