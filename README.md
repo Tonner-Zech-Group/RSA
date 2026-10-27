@@ -12,7 +12,6 @@ A *Random Sequential Adsorption (RSA)* package for the modelling of molecular ad
 * Support of diffusion and rotation events
 * Support of adsorbate conversion events
 * Analysis of surface coverage and effective gap size
-* Multithreading support for running multiple simulations simultaneously
 
 ## Documentation
 For further information have a look at the package documentation:
