@@ -530,27 +530,35 @@ function read_xyz_file(path::String)
 
 end
 
-# Function to check for any comments, empty lines, or "end" statements
+# Function to remove a comment (starting with # or !) and the surrounding whitespace from an input line
+clean_input_line(textline::AbstractString) = strip(first(split(textline, ('#', '!'); limit = 2)))
+
+# Function to check whether a (cleaned) input line closes a block
+is_block_end(textline::AbstractString) = lowercase(textline) == "end"
+
+# Function to read the next line with content (empty and comment-only lines are skipped)
+function next_content_line(io_id)
+    while ! eof(io_id)
+        line = clean_input_line(readline(io_id))
+        if ! isempty(line)
+            return line
+        end
+    end
+    println("The input file ended inside a block. A block is missing its closing 'end'.")
+    error("Input File Error")
+end
+
+# Function to check a cleaned input line for empty lines and "end" statements
+# The whole line is compared, so values containing "end" (e.g. file names) are not mistaken for a block end
 function input_check(textline::AbstractString)
-    
-    # Skip empty lines
-    if strip(textline) == ""
-        return 1
-    end
-    
-    # Skip comments indicated by # and !
-    if occursin("#", textline)
-        return 1
-    end
-    if occursin("!", textline)
+
+    # Skip empty lines (comments are already removed by clean_input_line)
+    if isempty(textline)
         return 1
     end
 
     # "end" statement found
-    if occursin("End", textline)
-        return 2
-    end
-    if occursin("end", textline)
+    if is_block_end(textline)
         return 2
     end
 
@@ -594,7 +602,7 @@ function read_input_file(path::String)
     while ! eof(io_id) 
         
         # Read the next line
-        line = readline(io_id)
+        line = clean_input_line(readline(io_id))
 
         # Check input
         checkvalue = input_check(line)
@@ -653,7 +661,7 @@ function read_molecule_block!(io_id, Nmolecules, molecules, molecule_blockkeywor
     while endcounter != 0
 
         # Read the next line
-        line = readline(io_id)
+        line = next_content_line(io_id)
         stripped = strip(line)
 
         # Check input
@@ -733,11 +741,11 @@ function read_molecule_block!(io_id, Nmolecules, molecules, molecule_blockkeywor
 
                 # Every line is a rotation value
                 # First line
-                line = strip(readline(io_id))
+                line = next_content_line(io_id)
                 # Every other line
-                while line != "end" && line != "End" && line != "END"
+                while ! is_block_end(line)
                     push!(molecule.rotationvalues, parse(Float64, line))
-                    line = strip(readline(io_id))
+                    line = next_content_line(io_id)
                 end
 
                 # Reset reading
@@ -749,7 +757,7 @@ function read_molecule_block!(io_id, Nmolecules, molecules, molecule_blockkeywor
         end
 
         # Check for a keyword
-        keyword, value = split(stripped, "=")
+        keyword, value = split(stripped, "="; limit = 2)
 
         # Check whether keyword is known
         stripped = strip(keyword)
@@ -793,7 +801,7 @@ function read_grid_block!(io_id, Ngrids, grids, grid_blockkeywords, grid_keyword
     while endcounter != 0
 
         # Read the next line
-        line = readline(io_id)
+        line = next_content_line(io_id)
         stripped = strip(line)
 
         # Check input
@@ -834,17 +842,17 @@ function read_grid_block!(io_id, Ngrids, grids, grid_blockkeywords, grid_keyword
 
                 # Every line is a grid point
                 # First line
-                line = readline(io_id)
+                line = next_content_line(io_id)
                 string_inputvector = split(line)
                 dimension = size(string_inputvector,1)
                 grid.uniquepoints = reshape(parse.(Float64, string_inputvector), dimension, 1)
                 
                 # Every other line
-                line = strip(readline(io_id))
-                while line != "end" && line != "End" && line != "END"
+                line = next_content_line(io_id)
+                while ! is_block_end(line)
                     string_inputvector = split(line)
                     grid.uniquepoints = hcat(grid.uniquepoints, parse.(Float64, string_inputvector))
-                    line = strip(readline(io_id))
+                    line = next_content_line(io_id)
                 end
 
                 # Store number of unique grid points
@@ -862,7 +870,7 @@ function read_grid_block!(io_id, Ngrids, grids, grid_blockkeywords, grid_keyword
         end
 
         # Check for a keyword
-        keyword, value = split(stripped, "=")
+        keyword, value = split(stripped, "="; limit = 2)
 
         # Check whether keyword is known
         stripped = strip(keyword)
@@ -894,7 +902,7 @@ function read_lattice_block(io_id, lattice_blockkeywords, lattice_keywords)
     while endcounter != 0
 
         # Read the next line
-        line = readline(io_id)
+        line = next_content_line(io_id)
         stripped = strip(line)
 
         # Check input
@@ -926,17 +934,17 @@ function read_lattice_block(io_id, lattice_blockkeywords, lattice_keywords)
 
                 # Every line is a lattice vector
                 # First line
-                line = strip(readline(io_id))
+                line = next_content_line(io_id)
                 string_inputvector = split(line)
                 lattice.dimension = size(string_inputvector,1)
                 lattice.cellvectors = reshape(parse.(Float64, string_inputvector), 1, lattice.dimension)
                 
                 # Every other line
-                line = strip(readline(io_id))
-                while line != "end" && line != "End" && line != "END"
+                line = next_content_line(io_id)
+                while ! is_block_end(line)
                     string_inputvector = split(line)
                     lattice.cellvectors = vcat(lattice.cellvectors, reshape(parse.(Float64, string_inputvector), 1, lattice.dimension))
-                    line = strip(readline(io_id))
+                    line = next_content_line(io_id)
                 end
 
                 # Check the dimension of the lattice
@@ -961,7 +969,7 @@ function read_lattice_block(io_id, lattice_blockkeywords, lattice_keywords)
         end
 
         # Check for a keyword
-        keyword, value = split(stripped, "=")
+        keyword, value = split(stripped, "="; limit = 2)
 
         # Check whether keyword is known
         stripped = strip(keyword)
@@ -997,7 +1005,7 @@ function read_event_block(io_id, event_keywords, event_blockkeywords, event_even
     while endcounter != 0
 
         # Read the next line
-        line = readline(io_id)
+        line = next_content_line(io_id)
         stripped = strip(line)
 
         # Check input
@@ -1019,8 +1027,8 @@ function read_event_block(io_id, event_keywords, event_blockkeywords, event_even
         if stripped in event_blockkeywords
             if stripped == "Eventlist" || stripped == "eventlist"
                 # Every line is an event
-                line = strip(readline(io_id))
-                while line != "end" && line != "End" && line != "END"
+                line = next_content_line(io_id)
+                while ! is_block_end(line)
                     
                     # Split the input line
                     eventinput = split(line)
@@ -1085,7 +1093,7 @@ function read_event_block(io_id, event_keywords, event_blockkeywords, event_even
                     end
                     
                     # Read the next line
-                    line = strip(readline(io_id))
+                    line = next_content_line(io_id)
                 end              
     
                 # Reset reading
@@ -1098,7 +1106,7 @@ function read_event_block(io_id, event_keywords, event_blockkeywords, event_even
         end
 
         # Check for a keyword
-        keyword, value = split(stripped, "=")
+        keyword, value = split(stripped, "="; limit = 2)
 
         # Check whether keyword is known
         stripped = strip(keyword)
