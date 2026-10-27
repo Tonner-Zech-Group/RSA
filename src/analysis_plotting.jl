@@ -344,7 +344,7 @@ function plot_single_molecule(molecule_id, Nmolecules, molecules; pixel_per_angs
 end
 
 # A function to write all structures of a single run with their atomic coordinates to a file of xyz format
-function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, file_path)
+function write_RSA_structures(run_id, rsa_results, Nmolecules, molecules, Ngrids, grids, file_path)
 
     # Get the number of adsorbates per molecule
     adsorbate_count = zeros(Int64, Nmolecules)

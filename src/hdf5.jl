@@ -536,7 +536,7 @@ function read_hdf5_input_information(hdf5_file, generation)
     
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Input Reading Error")
     end
 
@@ -575,7 +575,7 @@ function write_preparation_information(hdf5_file, generation, Ngrids, grids, lat
     
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 
@@ -800,7 +800,7 @@ function read_preparation_information(hdf5_file, generation, Ngrids, grids, latt
     
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 
@@ -1037,7 +1037,7 @@ function write_rsa_results(hdf5_file, generation, NRuns, rsa_results)
     
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 
@@ -1063,7 +1063,7 @@ function write_hdf5_rsa_run(hdf5_file, generation, run_id, rsa_result)
 
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 
@@ -1097,7 +1097,7 @@ function read_rsa_results(hdf5_file, generation, Nmolecules, Ngrids)
     
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 
@@ -1128,7 +1128,7 @@ function read_hdf5_rsa_run(hdf5_file, generation, run_id, Nmolecules, Ngrids)
 
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 
@@ -1153,8 +1153,8 @@ function read_hdf5_rsa_run(hdf5_file, generation, run_id, Nmolecules, Ngrids)
     # Transform tmp_Nevents
     rsa_result.Nevents = Matrix{Vector{Int64}}(undef, Nmolecules, Ngrids)
     counter = 0
-    for molecule_id in 1:Nmolecules
-        for grid_id in 1:Ngrids
+    for grid_id in 1:Ngrids
+        for molecule_id in 1:Nmolecules
             counter += 1
             rsa_result.Nevents[molecule_id, grid_id] = tmp_Nevents[1:4, counter]
         end
@@ -1189,7 +1189,7 @@ function read_hdf5_output_file(hdf5_file, generation)
 
     # Check whether the file already exists
     if ! isfile(hdf5_file)
-        println("The following HDF5 file does not exist: " * outputfile_path)
+        println("The following HDF5 file does not exist: " * hdf5_file)
         error("Output File Error")
     end
 

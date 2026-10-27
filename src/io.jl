@@ -680,7 +680,11 @@ function read_molecule_block!(io_id, Nmolecules, molecules, molecule_blockkeywor
                     #println("Rotation values explicitly stated for molecule " * string(molecule.label) * ".")
                     molecule.rotations = molecule.rotationvalues
                 elseif molecule.rotationmodus == "angle"
-                    #println("Rotation angle explicitly stated.")
+                    if molecule.rotationangle <= 0.0 || molecule.rotationangle > 360.0
+                        println("The rotation angle needs to be larger than 0 and smaller or equal to 360.")
+                        println("You wrongly specified: " * string(molecule.rotationangle))
+                        error("Input File Error")
+                    end
                     rotationstep = 0.0
                     while rotationstep < 360.0
                         push!(molecule.rotations, rotationstep)
@@ -805,7 +809,7 @@ function read_grid_block!(io_id, Ngrids, grids, grid_blockkeywords, grid_keyword
                     grid.label = Ngrids
                 end
                 if Ngrids > 1
-                    if grid.label in grids[].label
+                    if any(grid.label == ele.label for ele in grids)
                         println("Grid with identical label found. Label: " * string(grid.label) * ".")
                         error("Input File Error")
                     end
